@@ -1,70 +1,119 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Результаты поиска - SearchIt.vs</title>
-    <link rel="stylesheet" href="../style.css">
+    <title>Результаты - SearchIt.vs</title>
+    <style>
+        body {
+            margin: 20px;
+            font-family: Arial;
+        }
+        .header {
+            margin-bottom: 20px;
+        }
+        input {
+            width: 500px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            padding: 8px 16px;
+            border: 1px solid #f8f9fa;
+            background: #f8f9fa;
+            cursor: pointer;
+        }
+        .result {
+            margin: 15px 0;
+        }
+        .result a {
+            color: #1a0dab;
+            text-decoration: none;
+            font-size: 18px;
+        }
+        .result a:hover {
+            text-decoration: underline;
+        }
+        .url {
+            color: #006621;
+            font-size: 14px;
+        }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <header class="search-header">
-            <div class="header-top">
-                <h1><a href="../start.html" class="logo-link">🔍 SearchIt.vs</a></h1>
-                <div class="search-container-mini">
-                    <form id="searchForm" class="search-form-mini">
-                        <input type="text" id="searchInput" placeholder="Новый поиск..." autocomplete="off">
-                        <button type="submit">🔍</button>
-                    </form>
-                </div>
-            </div>
-        </header>
-
-        <main class="main-content">
-            <div class="results-info">
-                <h2 id="resultsTitle">Результаты поиска</h2>
-                <div class="filters">
-                    <button class="filter-btn active" onclick="setFilter('all')">Все</button>
-                    <button class="filter-btn" onclick="setFilter('verified')">✓ Только проверенные</button>
-                    <button class="filter-btn" onclick="setFilter('sites')">Сайты</button>
-                    <button class="filter-btn" onclick="setFilter('pages')">Страницы</button>
-                </div>
-            </div>
-
-            <div class="search-results" id="searchResults">
-                <!-- Результаты будут здесь -->
-            </div>
-
-            <div class="no-results" id="noResults" style="display: none;">
-                <div class="no-results-content">
-                    <h3>😕 Ничего не найдено</h3>
-                    <p>Попробуйте изменить запрос или посмотрите предложения ниже:</p>
-                    <div class="suggestions">
-                        <button class="suggestion" onclick="suggestSearch('mail')">Поиск почтовых сервисов</button>
-                        <button class="suggestion" onclick="suggestSearch('video')">Поиск видео платформ</button>
-                        <button class="suggestion" onclick="suggestSearch('social')">Поиск социальных сетей</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="search-tips">
-                <h4>Советы по поиску:</h4>
-                <ul>
-                    <li>Используйте английские названия для лучших результатов</li>
-                    <li>Система автоматически понимает русские запросы</li>
-                    <li>Проверенные сайты отмечены значком ✓</li>
-                    <li>Можно искать по категориям: почта, видео, соцсети</li>
-                </ul>
-            </div>
-        </main>
+    <div class="header">
+        <a href="../start.html" style="color: #1a0dab; text-decoration: none;">🔍 SearchIt.vs</a>
+        <form onsubmit="handleSearch(event)" style="margin-top: 10px;">
+            <input type="text" id="search" placeholder="Введите запрос">
+            <button type="submit">Поиск</button>
+        </form>
     </div>
 
-    <script src="../search.js"></script>
+    <div id="results"></div>
+
     <script>
-        // Обработка результатов поиска при загрузке страницы
-        document.addEventListener('DOMContentLoaded', function() {
-            processSearchResults();
-        });
+        function handleSearch(event) {
+            event.preventDefault();
+            const query = document.getElementById('search').value.trim();
+            if (query && window.parent && window.parent.navigateTo) {
+                window.parent.navigateTo(`searchit.vs/search/${encodeURIComponent(query)}`);
+            }
+        }
+
+        // Получаем сайты из API
+        async function loadResults() {
+            const path = window.location.href.split('/search/')[1];
+            const query = decodeURIComponent(path || '');
+            
+            if (query) {
+                document.getElementById('search').value = query;
+                
+                // Получаем все сайты через API
+                const allSites = await getAllSites();
+                
+                // Ищем совпадения
+                const results = allSites.filter(site => 
+                    site.name.toLowerCase().includes(query.toLowerCase())
+                );
+                
+                displayResults(results, query);
+            }
+        }
+
+        async function getAllSites() {
+            // Здесь будет запрос к API для получения списка сайтов
+            // Пока возвращаем статический список
+            return [
+                { name: 'mail.vs' },
+                { name: 'goverment.vs' },
+                { name: 'welcome.vs' },
+                { name: 'searchit.vs' },
+                { name: 'admin.goverment.vs' }
+            ];
+        }
+
+        function displayResults(results, query) {
+            const container = document.getElementById('results');
+            
+            if (results.length === 0) {
+                container.innerHTML = `<p>По запросу "${query}" ничего не найдено</p>`;
+            } else {
+                container.innerHTML = results.map(site => `
+                    <div class="result">
+                        <a href="javascript:void(0)" onclick="goTo('${site.name}')">${site.name}</a>
+                        <div class="url">${site.name}</div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function goTo(site) {
+            if (window.parent && window.parent.navigateTo) {
+                window.parent.navigateTo(site);
+            }
+        }
+
+        // Загружаем результаты при открытии страницы
+        loadResults();
     </script>
 </body>
 </html>
