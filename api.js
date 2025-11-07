@@ -9,7 +9,11 @@ class VSBrowserAPI {
         try {
             console.log('Loading URL:', url);
             
-            // Отделяем якорь от основного URL
+            // Обработка поисковых запросов
+            if (url.startsWith('searchit.vs/search/')) {
+                return await this.handleSearchRequest(url);
+            }
+            
             let mainUrl = url;
             let hash = '';
             if (url.includes('#')) {
@@ -37,6 +41,105 @@ class VSBrowserAPI {
         }
     }
     
+    async handleSearchRequest(url) {
+        const searchQuery = decodeURIComponent(url.replace('searchit.vs/search/', ''));
+        const allSites = await this.getAllSites();
+        const verifiedSites = await this.getVerifiedSites();
+        
+        // Ищем совпадения по английским названиям
+        const results = allSites.filter(site => {
+            const siteName = site.replace('.vs', '');
+            return this.transliterate(siteName).includes(this.transliterate(searchQuery)) ||
+                   siteName.toLowerCase().includes(searchQuery.toLowerCase());
+        });
+        
+        return this.generateSearchResults(searchQuery, results, verifiedSites);
+    }
+    
+    transliterate(text) {
+        const rus = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя";
+        const eng = "abvgdeejziyklmnoprstufhzcss_y_euya";
+        
+        return text.toLowerCase().split('').map(char => {
+            const index = rus.indexOf(char);
+            return index >= 0 ? eng[index] : char;
+        }).join('');
+    }
+    
+    async getAllSites() {
+        // В реальной реализации здесь был бы сканирование папки sites
+        // Пока используем статический список + verified
+        const staticSites = ['mail.vs', 'youtube.vs', 'google.vs', 'welcome.vs', 'searchit.vs'];
+        const verified = await this.getVerifiedSites();
+        return [...new Set([...staticSites, ...verified])];
+    }
+    
+    generateSearchResults(query, results, verifiedSites) {
+        return `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Поиск: ${query} - SearchIt.vs</title>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #f5f5f5; }
+        .search-header { background: #4285f4; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .search-box { display: flex; gap: 10px; margin: 20px 0; }
+        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
+        button { background: #4285f4; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+        .result { background: white; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #4285f4; }
+        .verified-badge { background: #27ae60; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 10px; }
+        .no-results { text-align: center; padding: 40px; color: #666; }
+    </style>
+</head>
+<body>
+    <div class="search-header">
+        <h1>🔍 SearchIt.vs</h1>
+        <form onsubmit="handleSearch(event)">
+            <div class="search-box">
+                <input type="text" id="searchInput" value="${query}" placeholder="Введите запрос...">
+                <button type="submit">Поиск</button>
+            </div>
+        </form>
+    </div>
+    
+    ${results.length > 0 ? `
+        <h3>Найдено сайтов: ${results.length}</h3>
+        ${results.map(site => {
+            const isVerified = verifiedSites.includes(site);
+            return `
+            <div class="result">
+                <h3><a href="javascript:void(0)" onclick="VSNavigate('${site}')">${site}</a>
+                ${isVerified ? '<span class="verified-badge">✓ Проверен</span>' : ''}</h3>
+                <p>Автоматически созданный сайт ${site}</p>
+            </div>`;
+        }).join('')}
+    ` : `
+        <div class="no-results">
+            <h3>По запросу "${query}" ничего не найдено</h3>
+            <p>Попробуйте изменить запрос или посмотрите <a href="javascript:void(0)" onclick="VSNavigate('welcome.vs')">список доступных сайтов</a></p>
+        </div>
+    `}
+    
+    <script>
+        function handleSearch(event) {
+            event.preventDefault();
+            const query = document.getElementById('searchInput').value;
+            if (query.trim()) {
+                VSNavigate('searchit.vs/search/' + encodeURIComponent(query));
+            }
+        }
+        
+        function VSNavigate(url) {
+            if (window.parent && window.parent.navigateTo) {
+                window.parent.navigateTo(url);
+            }
+        }
+    </script>
+</body>
+</html>`;
+    }
+    
+    // Остальные методы остаются без изменений
     processHtmlContent(content, baseUrl, hash) {
         const basePath = this.getBasePath(baseUrl);
         const baseTag = `<base href="${basePath}">`;
@@ -49,7 +152,6 @@ class VSBrowserAPI {
             content = `<head>${baseTag}</head>` + content;
         }
         
-        // Обрабатываем якорные ссылки
         content = content.replace(/href="#([^"]*)"/gi, (match, anchor) => {
             return `href="javascript:void(0)" onclick="VSHandleAnchor('${anchor}')"`;
         });
@@ -85,14 +187,12 @@ class VSBrowserAPI {
                 }
                 
                 function VSHandleAnchor(anchor) {
-                    // Прокрутка внутри iframe
                     const element = document.getElementById(anchor);
                     if (element) {
                         element.scrollIntoView({ behavior: 'smooth' });
                     }
                 }
                 
-                // Автопрокрутка к якорю при загрузке
                 window.addEventListener('load', function() {
                     ${hash ? `
                     const anchorElement = document.getElementById('${hash}');
@@ -126,7 +226,6 @@ class VSBrowserAPI {
         return content;
     }
     
-    // Остальные методы остаются без изменений
     extractDomain(url) {
         if (url.includes('/')) {
             return url.split('/')[0];
@@ -135,7 +234,6 @@ class VSBrowserAPI {
     }
     
     resolveUrlPath(url) {
-        // Обработка поддоменов типа my.site.vs
         if (this.isSubdomain(url)) {
             const parts = url.split('.');
             const subdomain = parts[0];
@@ -143,13 +241,11 @@ class VSBrowserAPI {
             return `${mainDomain}/${subdomain}.downdomain/start.html`;
         }
         
-        // Обработка путей типа site.vs/path/to/page
         if (url.includes('/')) {
             const [domain, ...pathParts] = url.split('/');
             const siteName = domain.replace('.vs', '');
             const path = pathParts.join('/');
             
-            // Проверяем, является ли путь .updomain в контексте .downdomain
             if (this.isUpdomainInDowndomain(siteName, pathParts[0])) {
                 return `${siteName}/${pathParts[0]}.downdomain/${pathParts.slice(1).join('/')}/start.html`;
             }
@@ -162,7 +258,6 @@ class VSBrowserAPI {
             }
         }
         
-        // Простой домен типа site.vs
         const siteName = url.replace('.vs', '');
         return `${siteName}/start.html`;
     }
@@ -173,8 +268,7 @@ class VSBrowserAPI {
     }
     
     isUpdomainInDowndomain(siteName, path) {
-        // Проверяем, существует ли такой .downdomain с .updomain внутри
-        const possibleDowndomains = ['imagining', 'blog', 'admin']; // примеры
+        const possibleDowndomains = ['imagining', 'blog', 'admin'];
         return possibleDowndomains.includes(path);
     }
     
