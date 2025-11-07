@@ -9,7 +9,6 @@ class VSBrowserAPI {
         try {
             console.log('Loading URL:', url);
             
-            // Обработка поисковых запросов
             if (url.startsWith('searchit.vs/search/')) {
                 return await this.handleSearchRequest(url);
             }
@@ -40,106 +39,123 @@ class VSBrowserAPI {
             throw error;
         }
     }
-    
+
+    // Сканируем папку sites на наличие сайтов
+    async getAllSites() {
+        const sites = [];
+        const verifiedSites = await this.getVerifiedSites();
+        
+        // Пробуем найти все папки в sites
+        const possibleFolders = await this.scanSitesFolder();
+        
+        for (const folder of possibleFolders) {
+            const siteName = `${folder}.vs`;
+            sites.push({
+                name: siteName,
+                verified: verifiedSites.includes(siteName)
+            });
+        }
+        
+        return sites;
+    }
+
+    // Сканируем папку sites
+    async scanSitesFolder() {
+        const folders = [];
+        
+        // Пробуем проверить существование основных папок
+        const testFolders = ['mail', 'goverment', 'welcome', 'searchit', 'admin'];
+        
+        for (const folder of testFolders) {
+            try {
+                const response = await fetch(`${this.sitesBaseUrl}${folder}/start.html`);
+                if (response.ok) {
+                    folders.push(folder);
+                }
+            } catch (error) {
+                // Папка не существует
+            }
+        }
+        
+        return folders;
+    }
+
     async handleSearchRequest(url) {
         const searchQuery = decodeURIComponent(url.replace('searchit.vs/search/', ''));
         const allSites = await this.getAllSites();
-        const verifiedSites = await this.getVerifiedSites();
         
-        // Ищем совпадения по английским названиям
+        // Ищем совпадения
         const results = allSites.filter(site => {
-            const siteName = site.replace('.vs', '');
-            return this.transliterate(siteName).includes(this.transliterate(searchQuery)) ||
-                   siteName.toLowerCase().includes(searchQuery.toLowerCase());
+            const siteName = site.name.replace('.vs', '').toLowerCase();
+            const query = searchQuery.toLowerCase();
+            return siteName.includes(query);
         });
         
-        return this.generateSearchResults(searchQuery, results, verifiedSites);
+        return this.generateSearchResults(searchQuery, results);
     }
     
-    transliterate(text) {
-        const rus = "абвгдеёжзийклмнопрстуфхцчшщъыьэюя";
-        const eng = "abvgdeejziyklmnoprstufhzcss_y_euya";
-        
-        return text.toLowerCase().split('').map(char => {
-            const index = rus.indexOf(char);
-            return index >= 0 ? eng[index] : char;
-        }).join('');
-    }
-    
-    async getAllSites() {
-        // В реальной реализации здесь был бы сканирование папки sites
-        // Пока используем статический список + verified
-        const staticSites = ['mail.vs', 'youtube.vs', 'google.vs', 'welcome.vs', 'searchit.vs'];
-        const verified = await this.getVerifiedSites();
-        return [...new Set([...staticSites, ...verified])];
-    }
-    
-    generateSearchResults(query, results, verifiedSites) {
+    generateSearchResults(query, results) {
         return `
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Поиск: ${query} - SearchIt.vs</title>
+    <title>Результаты - SearchIt.vs</title>
     <style>
-        body { font-family: Arial; margin: 20px; background: #f5f5f5; }
-        .search-header { background: #4285f4; color: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
-        .search-box { display: flex; gap: 10px; margin: 20px 0; }
-        input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
-        button { background: #4285f4; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
-        .result { background: white; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #4285f4; }
-        .verified-badge { background: #27ae60; color: white; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 10px; }
-        .no-results { text-align: center; padding: 40px; color: #666; }
+        body { margin: 20px; font-family: Arial; }
+        .header { margin-bottom: 20px; }
+        input { width: 500px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 8px 16px; border: 1px solid #f8f9fa; background: #f8f9fa; cursor: pointer; }
+        .result { margin: 15px 0; }
+        .result a { color: #1a0dab; text-decoration: none; font-size: 18px; }
+        .result a:hover { text-decoration: underline; }
+        .url { color: #006621; font-size: 14px; }
+        .verified { color: #27ae60; font-size: 12px; margin-left: 5px; }
     </style>
 </head>
 <body>
-    <div class="search-header">
-        <h1>🔍 SearchIt.vs</h1>
-        <form onsubmit="handleSearch(event)">
-            <div class="search-box">
-                <input type="text" id="searchInput" value="${query}" placeholder="Введите запрос...">
-                <button type="submit">Поиск</button>
-            </div>
+    <div class="header">
+        <a href="../start.html" style="color: #1a0dab; text-decoration: none;">🔍 SearchIt.vs</a>
+        <form onsubmit="handleSearch(event)" style="margin-top: 10px;">
+            <input type="text" id="search" value="${query}" placeholder="Введите запрос">
+            <button type="submit">Поиск</button>
         </form>
     </div>
-    
-    ${results.length > 0 ? `
-        <h3>Найдено сайтов: ${results.length}</h3>
-        ${results.map(site => {
-            const isVerified = verifiedSites.includes(site);
-            return `
-            <div class="result">
-                <h3><a href="javascript:void(0)" onclick="VSNavigate('${site}')">${site}</a>
-                ${isVerified ? '<span class="verified-badge">✓ Проверен</span>' : ''}</h3>
-                <p>Автоматически созданный сайт ${site}</p>
-            </div>`;
-        }).join('')}
-    ` : `
-        <div class="no-results">
-            <h3>По запросу "${query}" ничего не найдено</h3>
-            <p>Попробуйте изменить запрос или посмотрите <a href="javascript:void(0)" onclick="VSNavigate('welcome.vs')">список доступных сайтов</a></p>
-        </div>
-    `}
-    
+
+    <div id="results">
+        ${results.length > 0 ? 
+            results.map(site => `
+                <div class="result">
+                    <a href="javascript:void(0)" onclick="goTo('${site.name}')">${site.name}</a>
+                    ${site.verified ? '<span class="verified">✓</span>' : ''}
+                    <div class="url">${site.name}</div>
+                </div>
+            `).join('') : 
+            `<p>По запросу "${query}" ничего не найдено</p>`
+        }
+    </div>
+
     <script>
         function handleSearch(event) {
             event.preventDefault();
-            const query = document.getElementById('searchInput').value;
-            if (query.trim()) {
-                VSNavigate('searchit.vs/search/' + encodeURIComponent(query));
+            const query = document.getElementById('search').value.trim();
+            if (query) {
+                if (window.parent && window.parent.navigateTo) {
+                    window.parent.navigateTo('searchit.vs/search/' + encodeURIComponent(query));
+                }
             }
         }
-        
-        function VSNavigate(url) {
+
+        function goTo(site) {
             if (window.parent && window.parent.navigateTo) {
-                window.parent.navigateTo(url);
+                window.parent.navigateTo(site);
             }
         }
     </script>
 </body>
 </html>`;
     }
-    
-    // Остальные методы остаются без изменений
+
+    // Остальные методы без изменений
     processHtmlContent(content, baseUrl, hash) {
         const basePath = this.getBasePath(baseUrl);
         const baseTag = `<base href="${basePath}">`;
@@ -181,7 +197,6 @@ class VSBrowserAPI {
                 }
                 
                 function VSHandleForm(form, actionUrl) {
-                    console.log('Form submitted to:', actionUrl, form);
                     VSNavigate(actionUrl);
                     return false;
                 }
@@ -200,19 +215,6 @@ class VSBrowserAPI {
                         anchorElement.scrollIntoView({ behavior: 'smooth' });
                     }
                     ` : ''}
-                });
-                
-                const originalLocation = window.location;
-                Object.defineProperty(window, 'location', {
-                    get: function() {
-                        return {
-                            href: '${baseUrl}',
-                            assign: function(url) { VSNavigate(url); },
-                            replace: function(url) { VSNavigate(url); },
-                            reload: function() { window.parent.navigateTo('${baseUrl}'); }
-                        };
-                    },
-                    set: function(url) { VSNavigate(url); }
                 });
             </script>
         `;
