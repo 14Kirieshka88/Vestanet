@@ -232,8 +232,8 @@
         <div class="container">
             <div class="header-content">
                 <div class="national-symbols">
-                    <img src="images/flag.jpg" alt="Флаг Весталии" class="flag" onerror="this.style.display='none'">
-                    <img src="images/coat_of_arms.jpg" alt="Герб Весталии" class="coat-of-arms" onerror="this.style.display='none'">
+                    <img src="flag.jpg" alt="Флаг Весталии" class="flag" onerror="this.style.display='none'">
+                    <img src="coat_of_arms.jpg" alt="Герб Весталии" class="coat-of-arms" onerror="this.style.display='none'">
                 </div>
                 <h1>Весталия</h1>
                 <a class="admin-btn" onclick="handleAdminLogin()">Администратор</a>
@@ -255,7 +255,7 @@
         <section id="monarch">
             <h2>Монарх Весталии</h2>
             <div class="monarch-info">
-                <img src="images/roman.jpg" alt="Роман Фон Габсбург" class="monarch-photo" onerror="this.style.display='none'">
+                <img src="roman.jpg" alt="Роман Фон Габсбург" class="monarch-photo" onerror="this.style.display='none'">
                 <div>
                     <h3>Роман Фон Габсбург</h3>
                     <p class="member-role">Монарх Весталии</p>
@@ -268,28 +268,28 @@
             <h2>Участники альянса Весталия</h2>
             <div class="alliance-grid">
                 <div class="alliance-member">
-                    <img src="images/kirill.jpg" alt="Кирилл Мартыненко" class="member-photo" onerror="this.style.display='none'">
+                    <img src="kirill.jpg" alt="Кирилл Мартыненко" class="member-photo" onerror="this.style.display='none'">
                     <h3>Кирилл Мартыненко</h3>
                     <p class="member-role">Главнокомандующий армии Весталии</p>
                     <p>Ответственный за оборону и безопасность государства, командующий вооруженными силами Весталии.</p>
                 </div>
 
                 <div class="alliance-member">
-                    <img src="images/maxim.jpg" alt="Максим Коровин" class="member-photo" onerror="this.style.display='none'">
+                    <img src="maxim.jpg" alt="Максим Коровин" class="member-photo" onerror="this.style.display='none'">
                     <h3>Максим Коровин</h3>
                     <p class="member-role">Лейтенант армии</p>
                     <p>Офицер армии Весталии, отвечающий за выполнение боевых задач и подготовку военного персонала.</p>
                 </div>
 
                 <div class="alliance-member">
-                    <img src="images/vova.jpg" alt="Вова Володин" class="member-photo" onerror="this.style.display='none'">
+                    <img src="vova.jpg" alt="Вова Володин" class="member-photo" onerror="this.style.display='none'">
                     <h3>Вова Володин</h3>
                     <p class="member-role">Работодатель</p>
                     <p>Обеспечивает рабочие места и экономическое развитие Весталии через предпринимательскую деятельность.</p>
                 </div>
 
                 <div class="alliance-member">
-                    <img src="images/zhirgalbek.jpg" alt="Жиргалбек Жандозов" class="member-photo" onerror="this.style.display='none'">
+                    <img src="zhirgalbek.jpg" alt="Жиргалбек Жандозов" class="member-photo" onerror="this.style.display='none'">
                     <h3>Жиргалбек Жандозов</h3>
                     <p class="member-role">Воин</p>
                     <p>Элитный воин армии Весталии, специалист по боевым операциям и защите государственных интересов.</p>
@@ -332,12 +332,12 @@
 
         // Обработчик для кнопки администратора
         function handleAdminLogin() {
-            // Вместо открытия ссылки, показываем сообщение или открываем в новой вкладке
-            if (window.parent && window.parent.navigateTo) {
-                // Если мы в iframe браузера, используем его навигацию
+            // В нашем браузере используем навигацию VS
+            if (typeof VSNavigate !== 'undefined') {
+                VSNavigate('admin.goverment.vs/login');
+            } else if (window.parent && window.parent.navigateTo) {
                 window.parent.navigateTo('admin.goverment.vs/login');
             } else {
-                // Если открыта отдельно, открываем в новой вкладке
                 window.open('https://admin.goverment.vs/login', '_blank');
             }
         }
@@ -354,11 +354,6 @@
             document.body.removeChild(tempInput);
             
             alert('Email скопирован в буфер обмена: ' + email);
-            
-            // Также предлагаем открыть почтовый клиент
-            if (confirm('Хотите открыть почтовый клиент для отправки письма?')) {
-                window.location.href = 'mailto:' + email;
-            }
         }
 
         // Обработка ошибок изображений
@@ -372,23 +367,6 @@
                     this.style.backgroundColor = '#f0f0f0';
                 });
             });
-
-            // Обработка якорных ссылок в URL при загрузке
-            const hash = window.location.hash;
-            if (hash) {
-                const sectionId = hash.substring(1);
-                setTimeout(() => scrollToSection(sectionId), 100);
-            }
-        });
-
-        // Предотвращаем стандартное поведение ссылок
-        document.addEventListener('click', function(e) {
-            if (e.target.tagName === 'A' && e.target.getAttribute('href') && 
-                e.target.getAttribute('href').startsWith('#')) {
-                e.preventDefault();
-                const sectionId = e.target.getAttribute('href').substring(1);
-                scrollToSection(sectionId);
-            }
         });
     </script>
 </body>
