@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SearchIt.vs - Поисковая система</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header class="search-header">
+            <h1>🔍 SearchIt.vs</h1>
+            <p class="tagline">Поисковая система интернета .vs</p>
+        </header>
+
+        <main class="main-content">
+            <div class="search-container">
+                <form id="searchForm" class="search-form">
+                    <div class="search-box">
+                        <input type="text" id="searchInput" 
+                               placeholder="Введите запрос для поиска сайтов..." 
+                               autocomplete="off">
+                        <button type="submit" class="search-btn">
+                            <span>Поиск</span>
+                        </button>
+                    </div>
+                    <div class="search-options">
+                        <label>
+                            <input type="checkbox" id="onlyVerified" checked>
+                            Только проверенные сайты
+                        </label>
+                        <label>
+                            <input type="checkbox" id="autoTransliterate" checked>
+                            Автоматическая транслитерация
+                        </label>
+                    </div>
+                </form>
+            </div>
+
+            <div class="quick-links">
+                <h3>Популярные запросы:</h3>
+                <div class="quick-links-grid">
+                    <button class="quick-link" onclick="quickSearch('почта')">📧 Почта</button>
+                    <button class="quick-link" onclick="quickSearch('видео')">🎥 Видео</button>
+                    <button class="quick-link" onclick="quickSearch('поиск')">🔍 Поиск</button>
+                    <button class="quick-link" onclick="quickSearch('игры')">🎮 Игры</button>
+                    <button class="quick-link" onclick="quickSearch('новости')">📰 Новости</button>
+                    <button class="quick-link" onclick="quickSearch('соцсети')">👥 Соцсети</button>
+                </div>
+            </div>
+
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-number" id="totalSites">0</span>
+                    <span class="stat-label">сайтов в базе</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number" id="verifiedSites">0</span>
+                    <span class="stat-label">проверенных сайтов</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-number" id="searchCount">0</span>
+                    <span class="stat-label">поисковых запросов</span>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>SearchIt.vs - Официальная поисковая система интернета .vs</p>
+            <p>Поддерживается Агенством Вестанетом</p>
+        </footer>
+    </div>
+
+    <script src="search.js"></script>
+</body>
+</html>
