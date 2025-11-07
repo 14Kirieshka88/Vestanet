@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VS Browser</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f0f0f0; }
+        
+        .browser-header {
+            background: #2c3e50;
+            color: white;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .address-bar {
+            flex: 1;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        
+        .nav-buttons button {
+            background: none;
+            border: none;
+            color: white;
+            padding: 5px 10px;
+            cursor: pointer;
+        }
+        
+        .browser-frame {
+            width: 100%;
+            height: calc(100vh - 50px);
+            border: none;
+            background: white;
+        }
+        
+        .loading {
+            padding: 20px;
+            text-align: center;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="browser-header">
+        <button onclick="goBack()">←</button>
+        <button onclick="goForward()">→</button>
+        <button onclick="refresh()">↻</button>
+        
+        <input type="text" class="address-bar" id="addressBar" 
+               placeholder="Введите адрес (например: mail.vs)" 
+               onkeypress="handleAddressEnter(event)">
+        
+        <button onclick="goToAddress()">Перейти</button>
+    </div>
+    
+    <iframe class="browser-frame" id="browserFrame" 
+            sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+
+    <script src="api.js"></script>
+    <script>
+        let history = [];
+        let currentHistoryIndex = -1;
+        
+        function handleAddressEnter(event) {
+            if (event.key === 'Enter') {
+                goToAddress();
+            }
+        }
+        
+        function goToAddress() {
+            const address = document.getElementById('addressBar').value.trim();
+            if (address) {
+                navigateTo(address);
+            }
+        }
+        
+        async function navigateTo(url) {
+            const frame = document.getElementById('browserFrame');
+            const loadingHtml = '<div class="loading">Загрузка...</div>';
+            frame.srcdoc = loadingHtml;
+            
+            try {
+                const content = await loadWebsite(url);
+                history = history.slice(0, currentHistoryIndex + 1);
+                history.push(url);
+                currentHistoryIndex = history.length - 1;
+                
+                document.getElementById('addressBar').value = url;
+                frame.srcdoc = content;
+            } catch (error) {
+                frame.srcdoc = `
+                    <div style="padding: 20px; text-align: center;">
+                        <h2>Ошибка загрузки</h2>
+                        <p>${error.message}</p>
+                        <p>Попробуйте другой адрес</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function goBack() {
+            if (currentHistoryIndex > 0) {
+                currentHistoryIndex--;
+                const url = history[currentHistoryIndex];
+                document.getElementById('addressBar').value = url;
+                navigateTo(url);
+            }
+        }
+        
+        function goForward() {
+            if (currentHistoryIndex < history.length - 1) {
+                currentHistoryIndex++;
+                const url = history[currentHistoryIndex];
+                document.getElementById('addressBar').value = url;
+                navigateTo(url);
+            }
+        }
+        
+        function refresh() {
+            if (history[currentHistoryIndex]) {
+                navigateTo(history[currentHistoryIndex]);
+            }
+        }
+        
+        // Загружаем стартовую страницу
+        window.onload = function() {
+            navigateTo('welcome.vs');
+        };
+    </script>
+</body>
+</html>
