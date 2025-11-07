@@ -52,6 +52,7 @@
             border-radius: 5px;
             font-weight: bold;
             border: 2px solid #8B0000;
+            cursor: pointer;
         }
 
         .admin-btn:hover {
@@ -97,6 +98,7 @@
             padding: 10px 20px;
             border-radius: 5px;
             transition: background 0.3s;
+            cursor: pointer;
         }
 
         .nav-menu a:hover {
@@ -110,6 +112,7 @@
             padding: 30px;
             border-radius: 10px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            scroll-margin-top: 20px;
         }
 
         h2 {
@@ -175,6 +178,7 @@
             font-weight: bold;
             text-decoration: none;
             font-size: 1.2em;
+            cursor: pointer;
         }
 
         .email-link:hover {
@@ -216,6 +220,11 @@
                 gap: 10px;
             }
         }
+
+        /* Стили для плавной прокрутки */
+        html {
+            scroll-behavior: smooth;
+        }
     </style>
 </head>
 <body>
@@ -227,7 +236,7 @@
                     <img src="images/coat_of_arms.jpg" alt="Герб Весталии" class="coat-of-arms" onerror="this.style.display='none'">
                 </div>
                 <h1>Весталия</h1>
-                <a href="https://admin.goverment.vs/login" class="admin-btn">Администратор</a>
+                <a class="admin-btn" onclick="handleAdminLogin()">Администратор</a>
             </div>
         </div>
     </header>
@@ -235,9 +244,9 @@
     <nav>
         <div class="container">
             <ul class="nav-menu">
-                <li><a href="#monarch">Монарх</a></li>
-                <li><a href="#alliance">Участники альянса</a></li>
-                <li><a href="#contacts">Контакты</a></li>
+                <li><a onclick="scrollToSection('monarch')">Монарх</a></li>
+                <li><a onclick="scrollToSection('alliance')">Участники альянса</a></li>
+                <li><a onclick="scrollToSection('contacts')">Контакты</a></li>
             </ul>
         </div>
     </nav>
@@ -293,7 +302,7 @@
             <div class="contact-info">
                 <p><strong>Официальная почта правительства Весталии:</strong></p>
                 <p>
-                    <a href="mailto:vestaliagoverment@gmail.com" class="email-link">
+                    <a class="email-link" onclick="handleEmailClick()">
                         vestaliagoverment@gmail.com
                     </a>
                 </p>
@@ -310,6 +319,49 @@
     </footer>
 
     <script>
+        // Функция для плавной прокрутки к секциям
+        function scrollToSection(sectionId) {
+            const element = document.getElementById(sectionId);
+            if (element) {
+                element.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'start'
+                });
+            }
+        }
+
+        // Обработчик для кнопки администратора
+        function handleAdminLogin() {
+            // Вместо открытия ссылки, показываем сообщение или открываем в новой вкладке
+            if (window.parent && window.parent.navigateTo) {
+                // Если мы в iframe браузера, используем его навигацию
+                window.parent.navigateTo('admin.goverment.vs/login');
+            } else {
+                // Если открыта отдельно, открываем в новой вкладке
+                window.open('https://admin.goverment.vs/login', '_blank');
+            }
+        }
+
+        // Обработчик для email
+        function handleEmailClick() {
+            const email = 'vestaliagoverment@gmail.com';
+            // Создаем временный элемент для копирования
+            const tempInput = document.createElement('input');
+            tempInput.value = email;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            
+            alert('Email скопирован в буфер обмена: ' + email);
+            
+            // Также предлагаем открыть почтовый клиент
+            if (confirm('Хотите открыть почтовый клиент для отправки письма?')) {
+                window.location.href = 'mailto:' + email;
+            }
+        }
+
+        // Обработка ошибок изображений
         document.addEventListener('DOMContentLoaded', function() {
             const images = document.querySelectorAll('img');
             images.forEach(img => {
@@ -320,6 +372,23 @@
                     this.style.backgroundColor = '#f0f0f0';
                 });
             });
+
+            // Обработка якорных ссылок в URL при загрузке
+            const hash = window.location.hash;
+            if (hash) {
+                const sectionId = hash.substring(1);
+                setTimeout(() => scrollToSection(sectionId), 100);
+            }
+        });
+
+        // Предотвращаем стандартное поведение ссылок
+        document.addEventListener('click', function(e) {
+            if (e.target.tagName === 'A' && e.target.getAttribute('href') && 
+                e.target.getAttribute('href').startsWith('#')) {
+                e.preventDefault();
+                const sectionId = e.target.getAttribute('href').substring(1);
+                scrollToSection(sectionId);
+            }
         });
     </script>
 </body>
