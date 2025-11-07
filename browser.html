@@ -35,7 +35,7 @@
         
         .browser-frame {
             width: 100%;
-            height: calc(100vh - 50px);
+            height: calc(100vh - 90px);
             border: none;
             background: white;
         }
@@ -45,6 +45,62 @@
             text-align: center;
             color: #666;
         }
+        
+        .verified-badge {
+            background: #27ae60;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            margin-left: 10px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .settings-panel {
+            background: #34495e;
+            padding: 10px;
+            color: white;
+            display: none;
+        }
+        
+        .settings-toggle {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 5px;
+        }
+        
+        .search-suggestions {
+            position: absolute;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: calc(100% - 120px);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .search-suggestion {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .search-suggestion:hover {
+            background: #f5f5f5;
+        }
+        
+        .search-suggestion.verified::after {
+            content: "✓";
+            color: #27ae60;
+            margin-left: 5px;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -53,11 +109,32 @@
         <button onclick="goForward()">→</button>
         <button onclick="refresh()">↻</button>
         
-        <input type="text" class="address-bar" id="addressBar" 
-               placeholder="Введите адрес (например: mail.vs)" 
-               onkeypress="handleAddressEnter(event)">
+        <div style="flex: 1; position: relative;">
+            <input type="text" class="address-bar" id="addressBar" 
+                   placeholder="Введите адрес или поисковый запрос..." 
+                   onkeypress="handleAddressEnter(event)"
+                   oninput="showSearchSuggestions()">
+            <div class="search-suggestions" id="searchSuggestions"></div>
+        </div>
         
         <button onclick="goToAddress()">Перейти</button>
+        <button class="settings-toggle" onclick="toggleSettings()">⚙️</button>
+    </div>
+    
+    <div class="settings-panel" id="settingsPanel">
+        <h3>Настройки браузера</h3>
+        <div>
+            <label>
+                <input type="checkbox" id="autoRedirectSearch" checked>
+                Автоматический поиск при вводе текста
+            </label>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="showVerifiedBadge" checked>
+                Показывать проверенные сайты
+            </label>
+        </div>
     </div>
     
     <iframe class="browser-frame" id="browserFrame" 
@@ -67,17 +144,71 @@
     <script>
         let history = [];
         let currentHistoryIndex = -1;
+        let verifiedSites = [];
+        
+        // Загружаем verified сайты при запуске
+        async function loadVerifiedSites() {
+            verifiedSites = await vsBrowser.getVerifiedSites();
+        }
         
         function handleAddressEnter(event) {
             if (event.key === 'Enter') {
+                hideSearchSuggestions();
                 goToAddress();
             }
         }
         
-        function goToAddress() {
+        async function showSearchSuggestions() {
+            const input = document.getElementById('addressBar').value.trim();
+            const suggestions = document.getElementById('searchSuggestions');
+            
+            if (input.length < 2) {
+                suggestions.style.display = 'none';
+                return;
+            }
+            
+            // Получаем все доступные сайты для поиска
+            const allSites = await getAllAvailableSites();
+            const matchedSites = allSites.filter(site => 
+                site.toLowerCase().includes(input.toLowerCase())
+            );
+            
+            if (matchedSites.length === 0) {
+                suggestions.style.display = 'none';
+                return;
+            }
+            
+            suggestions.innerHTML = matchedSites.map(site => {
+                const isVerified = verifiedSites.includes(site);
+                return `<div class="search-suggestion ${isVerified ? 'verified' : ''}" onclick="selectSuggestion('${site}')">
+                    ${site} ${isVerified ? '✓' : ''}
+                </div>`;
+            }).join('');
+            
+            suggestions.style.display = 'block';
+        }
+        
+        function hideSearchSuggestions() {
+            document.getElementById('searchSuggestions').style.display = 'none';
+        }
+        
+        function selectSuggestion(site) {
+            document.getElementById('addressBar').value = site;
+            hideSearchSuggestions();
+            goToAddress();
+        }
+        
+        async function getAllAvailableSites() {
+            // В реальной реализации здесь был бы запрос к API для получения списка сайтов
+            // Пока используем статический список + verified сайты
+            const staticSites = ['mail.vs', 'youtube.vs', 'google.vs', 'welcome.vs', 'searchit.vs'];
+            return [...new Set([...staticSites, ...verifiedSites])];
+        }
+        
+        async function goToAddress() {
             const address = document.getElementById('addressBar').value.trim();
             if (address) {
-                navigateTo(address);
+                await navigateTo(address);
             }
         }
         
@@ -87,22 +218,58 @@
             frame.srcdoc = loadingHtml;
             
             try {
+                // Проверяем, является ли ввод поисковым запросом (не URL)
+                if (!isValidUrl(url) && document.getElementById('autoRedirectSearch').checked) {
+                    url = `searchit.vs/search/${encodeURIComponent(url)}`;
+                }
+                
                 const content = await loadWebsite(url);
+                
+                // Проверяем verified статус
+                const domain = url.split('/')[0];
+                const isVerified = verifiedSites.includes(domain);
+                
                 history = history.slice(0, currentHistoryIndex + 1);
                 history.push(url);
                 currentHistoryIndex = history.length - 1;
                 
                 document.getElementById('addressBar').value = url;
-                frame.srcdoc = content;
+                
+                // Добавляем verified badge в заголовок
+                if (isVerified && document.getElementById('showVerifiedBadge').checked) {
+                    frame.srcdoc = content.replace('</head>', `
+                        <style>
+                            .verified-notification {
+                                background: #27ae60;
+                                color: white;
+                                padding: 10px;
+                                text-align: center;
+                                font-size: 14px;
+                                border-bottom: 2px solid #219652;
+                            }
+                        </style>
+                        <div class="verified-notification">
+                            ✓ Этот сайт проверен Агенством Вестанетом
+                        </div>
+                    </head>`);
+                } else {
+                    frame.srcdoc = content;
+                }
+                
             } catch (error) {
                 frame.srcdoc = `
                     <div style="padding: 20px; text-align: center;">
                         <h2>Ошибка загрузки</h2>
                         <p>${error.message}</p>
-                        <p>Попробуйте другой адрес</p>
+                        <p>Попробуйте другой адрес или <a href="javascript:void(0)" onclick="window.parent.navigateTo('searchit.vs')">воспользуйтесь поиском</a></p>
                     </div>
                 `;
             }
+        }
+        
+        function isValidUrl(input) {
+            // Простая проверка на URL (содержит .vs или начинается с http)
+            return input.includes('.vs') || input.startsWith('http') || input.includes('/');
         }
         
         function goBack() {
@@ -129,8 +296,14 @@
             }
         }
         
-        // Загружаем стартовую страницу
-        window.onload = function() {
+        function toggleSettings() {
+            const panel = document.getElementById('settingsPanel');
+            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+        }
+        
+        // Загружаем стартовую страницу и verified сайты
+        window.onload = async function() {
+            await loadVerifiedSites();
             navigateTo('welcome.vs');
         };
     </script>
