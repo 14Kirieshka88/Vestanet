@@ -1,238 +1,189 @@
-class VSBrowserAPI {
-    constructor() {
-        this.sitesBaseUrl = './sites/';
-        this.verifiedFile = './verified.txt';
-        this.currentDomain = '';
+// api.js — упрощённый API для "интернета в интернете"
+// Основная идея: вводим "<sitename>.vs" -> пытаемся загрузить /sites/<sitename>/start.html
+// Защита: разрешаем загружать только из /sites/<name>/
+// Интерфейс: vsBrowser.load(siteHost) -> Promise({ok, msg})
+
+export class VSBrowserAPI {
+  constructor(options = {}) {
+    // base path на GitHub Pages — просто корень сайта
+    this.sitesBase = options.sitesBase || '/sites';
+    // имя файла старта
+    this.startFile = options.startFile || 'start.html';
+    // iframe id куда вставляем контент
+    this.iframeId = options.iframeId || 'vs-content-frame';
+    // элемент статуса (опционально)
+    this.statusEl = options.statusEl || null;
+    // history
+    this.history = [];
+    this.historyIndex = -1;
+  }
+
+  _setStatus(text) {
+    if (this.statusEl) this.statusEl.textContent = text;
+    else console.log('[VSBrowser status]', text);
+  }
+
+  // нормализует ввод: "gov.vs" -> "gov", также принимает "gov" или full path "/sites/gov/start.html"
+  extractSiteName(input) {
+    if (!input) return null;
+    input = input.trim();
+    // если ввели с доменом .vs
+    const vsMatch = input.match(/^([a-zA-Z0-9-_]+)\.vs$/);
+    if (vsMatch) return vsMatch[1];
+    // если ввели просто имя
+    if (/^[a-zA-Z0-9-_]+$/.test(input)) return input;
+    // если ввели путевой адрес типа /sites/gov/start.html -> извлечь gov
+    const pathMatch = input.match(/\/sites\/([a-zA-Z0-9-_]+)(\/|$)/);
+    if (pathMatch) return pathMatch[1];
+    return null;
+  }
+
+  // Возвращает URL для загрузки стартовой страницы сайта
+  getStartUrlForSite(siteName) {
+    return `${this.sitesBase}/${encodeURIComponent(siteName)}/${this.startFile}`;
+  }
+
+  // Проверяет, доступен ли start.html (HEAD или GET)
+  async checkSiteExists(siteName) {
+    const url = this.getStartUrlForSite(siteName);
+    try {
+      const resp = await fetch(url, { method: 'GET' });
+      if (!resp.ok) return { ok: false, code: resp.status, msg: `HTTP ${resp.status}` };
+      return { ok: true, url };
+    } catch (e) {
+      return { ok: false, msg: e.message };
     }
-    
-    async loadWebsite(url) {
-        try {
-            console.log('Loading URL:', url);
-            
-            this.currentDomain = this.extractDomain(url);
-            let sitePath = this.resolveUrlPath(url);
-            const fullPath = this.sitesBaseUrl + sitePath;
-            
-            console.log('Resolved path:', fullPath);
-            
-            const response = await fetch(fullPath);
-            if (!response.ok) {
-                throw new Error(`Сайт не найден: ${url}`);
-            }
-            
-            let content = await response.text();
-            content = this.processHtmlContent(content, url);
-            
-            return content;
-        } catch (error) {
-            console.error('Error loading website:', error);
-            throw error;
-        }
+  }
+
+  // Загружает сайт в iframe. Возвращает Promise с объектом результата.
+  async load(siteInput, pushHistory = true) {
+    const siteName = this.extractSiteName(siteInput);
+    if (!siteName) {
+      this._setStatus('Неверный адрес — введите, например, gov.vs');
+      return { ok: false, msg: 'invalid site name' };
     }
-    
-    extractDomain(url) {
-        if (url.includes('/')) {
-            return url.split('/')[0];
-        }
-        return url;
+
+    this._setStatus(`Проверяю сайт: ${siteName}...`);
+    const check = await this.checkSiteExists(siteName);
+    if (!check.ok) {
+      this._setStatus(`Сайт не найден: ${siteName} (${check.msg || check.code})`);
+      return { ok: false, msg: 'not found', detail: check };
     }
-    
-    resolveUrlPath(url) {
-        // Обработка поддоменов типа my.site.vs (через .downdomain)
-        if (this.isSubdomain(url)) {
-            const parts = url.split('.');
-            const subdomain = parts[0];
-            const mainDomain = parts[1];
-            return `${mainDomain}/${subdomain}.downdomain/start.html`;
-        }
-        
-        // Обработка путей типа site.vs/updomain (через .updomain)
-        if (url.includes('/')) {
-            const [domain, ...pathParts] = url.split('/');
-            const siteName = domain.replace('.vs', '');
-            const path = pathParts.join('/');
-            
-            // Проверяем, является ли первый элемент пути .updomain папкой
-            const firstPath = pathParts[0];
-            if (firstPath && this.isUpdomainPath(siteName, firstPath)) {
-                return `${siteName}/${firstPath}.updomain/start.html`;
-            }
-            
-            // Обычные пути
-            if (path.includes('.') && !path.endsWith('/')) {
-                return `${siteName}/${path}`;
-            } else {
-                const cleanPath = path.endsWith('/') ? path.slice(0, -1) : path;
-                return `${siteName}/${cleanPath}/start.html`;
-            }
-        }
-        
-        // Простой домен типа site.vs
-        const siteName = url.replace('.vs', '');
-        return `${siteName}/start.html`;
+
+    const iframe = document.getElementById(this.iframeId);
+    if (!iframe) {
+      this._setStatus('Ошибка: iframe не найден.');
+      return { ok: false, msg: 'no iframe' };
     }
-    
-    isSubdomain(url) {
-        const parts = url.split('.');
-        return parts.length > 2 && parts[parts.length - 1] === 'vs';
+
+    // Устанавливаем src iframe на стартовую страницу
+    iframe.src = check.url;
+    this._setStatus('Загрузка...');
+
+    // Обновляем историю
+    if (pushHistory) {
+      // если мы не в конце — усекаем "вперёд"
+      if (this.historyIndex < this.history.length - 1) {
+        this.history = this.history.slice(0, this.historyIndex + 1);
+      }
+      this.history.push({ site: siteName, url: check.url });
+      this.historyIndex = this.history.length - 1;
     }
-    
-    isUpdomainPath(siteName, path) {
-        // Проверяем существует ли папка path.updomain
-        // В реальной реализации здесь была бы проверка файловой системы
-        // Для демо просто проверяем по известным путям
-        const updomainPaths = ['imagining', 'blog', 'shop']; // примеры
-        return updomainPaths.includes(path);
+
+    // Подключим onload обработчик извне (в browser.html установим обработчик)
+    return { ok: true, url: check.url, site: siteName };
+  }
+
+  // Навигация по истории
+  async back() {
+    if (this.historyIndex <= 0) return { ok: false, msg: 'no back' };
+    this.historyIndex--;
+    const entry = this.history[this.historyIndex];
+    return this._navigateToHistoryEntry(entry);
+  }
+
+  async forward() {
+    if (this.historyIndex >= this.history.length - 1) return { ok: false, msg: 'no forward' };
+    this.historyIndex++;
+    const entry = this.history[this.historyIndex];
+    return this._navigateToHistoryEntry(entry);
+  }
+
+  async reload() {
+    if (this.historyIndex < 0) return { ok: false, msg: 'no current' };
+    const entry = this.history[this.historyIndex];
+    return this._navigateToHistoryEntry(entry, false);
+  }
+
+  _navigateToHistoryEntry(entry, pushHistory = false) {
+    const iframe = document.getElementById(this.iframeId);
+    if (!iframe) return { ok: false, msg: 'no iframe' };
+    iframe.src = entry.url;
+    this._setStatus(`Загрузка ${entry.site}...`);
+    return { ok: true, url: entry.url, site: entry.site };
+  }
+
+  // Ограничение: только ресурсы внутри /sites/<site> разрешаем открывать.
+  // Эта функция проверяет ссылку и возвращает true если безопасно.
+  isAllowedUrl(url, siteName) {
+    try {
+      const u = new URL(url, location.href);
+      // разрешаем только тот же origin и путь начинающийся на /sites/<siteName>/
+      if (u.origin !== location.origin) return false;
+      return u.pathname.startsWith(`${this.sitesBase}/${siteName}/`);
+    } catch (e) {
+      return false;
     }
-    
-    processHtmlContent(content, baseUrl) {
-        const basePath = this.getBasePath(baseUrl);
-        const baseTag = `<base href="${basePath}">`;
-        
-        if (content.includes('</head>')) {
-            content = content.replace('</head>', `${baseTag}</head>`);
-        } else if (content.includes('<head>')) {
-            content = content.replace('<head>', `<head>${baseTag}`);
-        } else {
-            content = `<head>${baseTag}</head>` + content;
-        }
-        
-        content = content.replace(/href="([^"]*)"/gi, (match, href) => {
-            return this.processHref(href, baseUrl, match);
+  }
+
+  // Инжектим внутрь iframe обработчик ссылок и форм (только если same-origin)
+  // Вызывать в onload iframe. Если не доступно (cross-origin), ничего не меняем.
+  attachSandboxHandlers() {
+    const iframe = document.getElementById(this.iframeId);
+    if (!iframe) return;
+    try {
+      const win = iframe.contentWindow;
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      const currentEntry = this.history[this.historyIndex];
+      const siteName = currentEntry ? currentEntry.site : null;
+
+      // Перехватываем ссылки
+      doc.querySelectorAll('a').forEach(a => {
+        a.addEventListener('click', (ev) => {
+          const href = a.getAttribute('href') || '';
+          // относительные ссылки нормально резолвятся
+          const resolved = new URL(href, win.location.href).href;
+          if (this.isAllowedUrl(resolved, siteName)) {
+            // загрузим новую страницу в iframe (pushHistory=true)
+            ev.preventDefault();
+            // вытянем siteName из нового пути (если ссылка ведёт внутри той же папки — остаёмся)
+            const match = resolved.match(new RegExp(`${this.sitesBase}/([a-zA-Z0-9-_]+)/`));
+            const newSite = match ? match[1] : siteName;
+            this.load(`${newSite}.vs`);
+          } else {
+            ev.preventDefault();
+            alert('Открытие внешних ресурсов запрещено в этом "интернетe".');
+          }
+        }, { passive: true });
+      });
+
+      // Перехватываем формы — блокируем отправку за пределы allowed
+      doc.querySelectorAll('form').forEach(form => {
+        form.addEventListener('submit', (ev) => {
+          ev.preventDefault();
+          alert('Отправка форм заблокирована (симуляция).');
         });
-        
-        content = content.replace(/action="([^"]*)"/gi, (match, action) => {
-            return this.processAction(action, baseUrl, match);
-        });
-        
-        content = this.injectNavigationScripts(content, baseUrl);
-        
-        return content;
+      });
+
+      this._setStatus('Готово');
+    } catch (e) {
+      // cross-origin или ошибка доступа — ничего не делаем
+      console.warn('Не удалось инжектить обработчики в iframe (возможно cross-origin):', e);
+      this._setStatus('Загружено (без модификаций).');
     }
-    
-    processHref(href, baseUrl, originalMatch) {
-        if (href.startsWith('http') || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) {
-            return originalMatch;
-        }
-        
-        if (href.startsWith('/')) {
-            const domain = baseUrl.split('/')[0];
-            const newUrl = domain + href;
-            return `href="javascript:void(0)" onclick="VSNavigate('${newUrl}')"`;
-        } else {
-            const newUrl = this.resolveRelativeUrl(baseUrl, href);
-            return `href="javascript:void(0)" onclick="VSNavigate('${newUrl}')"`;
-        }
-    }
-    
-    processAction(action, baseUrl, originalMatch) {
-        if (action.startsWith('http') || !action) {
-            return originalMatch;
-        }
-        
-        if (action.startsWith('/')) {
-            const domain = baseUrl.split('/')[0];
-            const newUrl = domain + action;
-            return `action="javascript:void(0)" onsubmit="return VSHandleForm(this, '${newUrl}')"`;
-        } else {
-            const newUrl = this.resolveRelativeUrl(baseUrl, action);
-            return `action="javascript:void(0)" onsubmit="return VSHandleForm(this, '${newUrl}')"`;
-        }
-    }
-    
-    resolveRelativeUrl(baseUrl, relativeUrl) {
-        const baseParts = baseUrl.split('/').filter(part => part);
-        const relativeParts = relativeUrl.split('/').filter(part => part);
-        
-        if (baseParts.length > 1 && !baseUrl.endsWith('/')) {
-            baseParts.pop();
-        }
-        
-        for (const part of relativeParts) {
-            if (part === '..') {
-                if (baseParts.length > 1) baseParts.pop();
-            } else if (part !== '.') {
-                baseParts.push(part);
-            }
-        }
-        
-        return baseParts.join('/');
-    }
-    
-    getBasePath(url) {
-        const domain = url.split('/')[0];
-        const siteName = domain.replace('.vs', '');
-        
-        // Для .updomain путей нужно определить базовый путь
-        if (url.includes('/')) {
-            const pathParts = url.split('/');
-            const firstPath = pathParts[1];
-            if (this.isUpdomainPath(siteName, firstPath)) {
-                return `./sites/${siteName}/${firstPath}.updomain/`;
-            }
-        }
-        
-        return `./sites/${siteName}/`;
-    }
-    
-    injectNavigationScripts(content, baseUrl) {
-        const scripts = `
-            <script>
-                function VSNavigate(url) {
-                    if (url.startsWith('http')) {
-                        window.open(url, '_blank');
-                    } else {
-                        window.parent.navigateTo(url);
-                    }
-                }
-                
-                function VSHandleForm(form, actionUrl) {
-                    console.log('Form submitted to:', actionUrl, form);
-                    VSNavigate(actionUrl);
-                    return false;
-                }
-                
-                const originalLocation = window.location;
-                Object.defineProperty(window, 'location', {
-                    get: function() {
-                        return {
-                            href: '${baseUrl}',
-                            assign: function(url) { VSNavigate(url); },
-                            replace: function(url) { VSNavigate(url); },
-                            reload: function() { window.parent.navigateTo('${baseUrl}'); }
-                        };
-                    },
-                    set: function(url) { VSNavigate(url); }
-                });
-            </script>
-        `;
-        
-        if (content.includes('</body>')) {
-            content = content.replace('</body>', `${scripts}</body>`);
-        } else {
-            content += scripts;
-        }
-        
-        return content;
-    }
-    
-    async getVerifiedSites() {
-        try {
-            const response = await fetch(this.verifiedFile);
-            if (!response.ok) return [];
-            
-            const text = await response.text();
-            return text.split('\n')
-                .map(line => line.trim())
-                .filter(line => line && !line.startsWith('#'));
-        } catch (error) {
-            console.error('Error loading verified sites:', error);
-            return [];
-        }
-    }
+  }
 }
 
-const vsBrowser = new VSBrowserAPI();
-async function loadWebsite(url) {
-    return await vsBrowser.loadWebsite(url);
-}
+// Удобная фабрика для создания API в browser.html:
+// window.vsBrowser = new VSBrowserAPI({ iframeId: 'vs-content-frame', statusEl: document.getElementById('vs-status') });
