@@ -1,11 +1,27 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=goverment.vs">
-    <title>Перенаправление...</title>
+    <title>Переход...</title>
+    <script>
+        function handleGovermentMoving() {
+            // В нашем браузере используем навигацию VS
+            if (typeof VSNavigate !== 'undefined') {
+                VSNavigate('goverment.vs');
+            } else if (window.parent && typeof window.parent.navigateTo === 'function') {
+                window.parent.navigateTo('goverment.vs');
+            } else {
+                window.open('https://goverment.vs/', '_blank');
+            }
+        }
+
+        // Автоматический переход через небольшую задержку
+        window.onload = function() {
+            setTimeout(handleGovermentMoving, 500); // 0.5 сек задержка для плавности
+        };
+    </script>
 </head>
 <body>
-    <p>Перенаправление на <a href="https://goverment.vs">goverment.vs</a></p>
+    <h2>Подключение к системе Government.VS...</h2>
 </body>
 </html>
