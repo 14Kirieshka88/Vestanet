@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0"> 
     <title>VS Mobile Browser</title>
     <style>
         /* ================================================= */
@@ -10,7 +10,6 @@
         /* ================================================= */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
-        /* Ограничиваем ширину для имитации мобильного устройства */
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             background: #f8f8f8; 
@@ -18,7 +17,8 @@
             height: 100vh;
             display: flex;
             flex-direction: column;
-            overflow: hidden; /* Запрещаем прокрутку основного тела */
+            overflow: hidden; 
+            min-height: 100%;
         }
         
         /* ================================================= */
@@ -31,7 +31,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            flex-shrink: 0; /* Не сжимать при наличии фрейма */
+            flex-shrink: 0; 
         }
         
         .address-bar {
@@ -83,6 +83,8 @@
             left: 0;
             visibility: hidden;
             transition: visibility 0.3s;
+            /* Разрешаем масштабирование содержимого iframe */
+            touch-action: pan-x pan-y; 
         }
 
         .browser-frame.active {
@@ -101,6 +103,8 @@
             align-items: center;
             box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.1);
             flex-shrink: 0;
+            /* ИСПРАВЛЕНО: Добавляем отступ для iPhone Home Indicator */
+            padding-bottom: env(safe-area-inset-bottom);
         }
 
         .bottom-bar button {
@@ -193,7 +197,7 @@
 
         .modal-tab-item.active {
             border: 2px solid #3498db;
-            padding: 13px; /* Компенсация толщины border */
+            padding: 13px;
         }
         
         .tab-info {
@@ -299,7 +303,7 @@
 
         function showTabsModal() {
             const modalList = document.getElementById('modalTabList');
-            modalList.innerHTML = ''; // Очищаем
+            modalList.innerHTML = '';
             
             tabs.forEach((tab, index) => {
                 const item = document.createElement('div');
@@ -317,7 +321,6 @@
                 closeButton.onclick = (e) => {
                     e.stopPropagation();
                     closeTab(index);
-                    // Обновляем список модального окна после закрытия
                     showTabsModal(); 
                 };
                 item.appendChild(closeButton);
@@ -337,7 +340,6 @@
         function switchToTab(index) {
             if (index === activeTabIndex) return;
 
-            // Скрываем текущий фрейм
             if (activeTabIndex !== -1) {
                 const oldFrame = document.getElementById(`frame-${activeTabIndex}`);
                 if (oldFrame) oldFrame.classList.remove('active');
@@ -345,18 +347,15 @@
 
             activeTabIndex = index;
 
-            // Показываем новый фрейм
             const newFrame = document.getElementById(`frame-${activeTabIndex}`);
             newFrame.classList.add('active');
             
-            // Обновляем UI
             getActiveAddressBar().value = tabs[activeTabIndex].url;
             document.title = tabs[activeTabIndex].title + ' | VS Mobile Browser';
         }
 
         function closeTab(index) {
             if (tabs.length === 1) {
-                 // Не закрываем последнюю вкладку, просто обновляем ее на welcome.vs
                  tabs[0].history = [];
                  tabs[0].historyIndex = -1;
                  navigateTo('welcome.vs');
@@ -373,12 +372,10 @@
             tabs.splice(index, 1);
 
             if (index === activeTabIndex) {
-                // Если закрыли активную вкладку, переключаемся на соседнюю
                 const newIndex = Math.min(index, tabs.length - 1);
                 activeTabIndex = -1;
                 switchToTab(newIndex);
             } else if (index < activeTabIndex) {
-                // Если закрыли вкладку до активной, сдвигаем активный индекс
                 activeTabIndex--;
             }
             
@@ -388,14 +385,12 @@
         function openNewTab(url) {
             const newIndex = tabs.length;
             
-            // Создаем новый элемент фрейма
             const newFrame = document.createElement('iframe');
             newFrame.className = 'browser-frame';
             newFrame.id = `frame-${newIndex}`;
             newFrame.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-popups'); 
             document.getElementById('frameContainer').appendChild(newFrame);
 
-            // Создаем объект вкладки
             tabs.push({
                 url: '',
                 title: 'Загрузка...',
@@ -403,7 +398,6 @@
                 historyIndex: -1
             });
 
-            // Переключаемся на новую вкладку
             switchToTab(newIndex);
             
             updateTabCount();
@@ -421,12 +415,10 @@
         function goToAddress() {
             const address = getActiveAddressBar().value.trim();
             if (address) {
-                // Всегда открываем в активной вкладке
                 navigateTo(address); 
             }
         }
         
-        // Эта функция должна быть глобальной для вызова из iframe
         window.navigateTo = async function(url) {
             const frame = getActiveFrame();
             const currentTab = getActiveTab();
@@ -438,10 +430,8 @@
             currentTab.title = 'Загрузка...';
             
             try {
-                // Используем функцию из api.js
                 const content = await loadWebsite(url);
                 
-                // Обновляем историю и URL
                 currentTab.history = currentTab.history.slice(0, currentTab.historyIndex + 1);
                 currentTab.history.push(url);
                 currentTab.historyIndex = currentTab.history.length - 1;
@@ -450,7 +440,6 @@
                 getActiveAddressBar().value = url;
                 frame.srcdoc = content;
 
-                // Попытка извлечь заголовок
                 const match = content.match(/<title>(.*?)<\/title>/i);
                 currentTab.title = match ? match[1].trim() : url;
                 document.title = currentTab.title + ' | VS Mobile Browser';
@@ -473,7 +462,6 @@
             }
         }
         
-        // Функция для загрузки страницы, когда мы идем вперед/назад в истории
         async function loadFromHistory(url) {
             const frame = getActiveFrame();
             const currentTab = getActiveTab();
@@ -489,7 +477,6 @@
                 currentTab.url = url;
                 getActiveAddressBar().value = url;
                 
-                // Попытка извлечь заголовок
                 const match = content.match(/<title>(.*?)<\/title>/i);
                 currentTab.title = match ? match[1].trim() : url;
                 document.title = currentTab.title + ' | VS Mobile Browser';
@@ -535,7 +522,6 @@
             }
         }
         
-        // Загружаем стартовую страницу при запуске
         window.onload = function() {
             openNewTab('welcome.vs');
         };
