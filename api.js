@@ -2,13 +2,14 @@ class VSBrowserAPI {
     constructor() {
         this.sitesBaseUrl = './sites/';
         this.verifiedFile = './verified.txt';
+        this.currentDomain = '';
     }
     
     async loadWebsite(url) {
         try {
             console.log('Loading URL:', url);
             
-            // Текущий домен извлекается, но не хранится в состоянии класса, как просили
+            this.currentDomain = this.extractDomain(url);
             let sitePath = this.resolveUrlPath(url);
             const fullPath = this.sitesBaseUrl + sitePath;
             
@@ -16,7 +17,7 @@ class VSBrowserAPI {
             
             const response = await fetch(fullPath);
             if (!response.ok) {
-                throw new Error(`Сайт не найден: ${url} (попытка загрузить: ${fullPath})`);
+                throw new Error(`Сайт не найден: ${url}`);
             }
             
             let content = await response.text();
@@ -45,7 +46,7 @@ class VSBrowserAPI {
             return `${mainDomain}/${subdomain}.downdomain/start.html`;
         }
         
-        // Обработка путей
+        // Обработка путей типа site.vs/updomain (через .updomain)
         if (url.includes('/')) {
             const [domain, ...pathParts] = url.split('/');
             const siteName = domain.replace('.vs', '');
@@ -57,12 +58,12 @@ class VSBrowserAPI {
                 return `${siteName}/${firstPath}.updomain/start.html`;
             }
             
-            // Логика для обычных путей (site.vs/example.html или site.vs/folder/)
+            // Обычные пути (site.vs/example.html или site.vs/folder/)
             if (path.includes('.') && !path.endsWith('/')) {
-                // Прямой путь к файлу (например: site.vs/page.html)
+                // Путь к файлу
                 return `${siteName}/${path}`;
             } else {
-                // Путь к папке (например: site.vs/folder или site.vs/folder/)
+                // Путь к папке
                 const cleanPath = path.endsWith('/') ? path.slice(0, -1) : path;
                 return `${siteName}/${cleanPath}/start.html`;
             }
@@ -80,7 +81,7 @@ class VSBrowserAPI {
     
     isUpdomainPath(siteName, path) {
         // Для демо просто проверяем по известным путям
-        const updomainPaths = ['imagining', 'blog', 'shop']; 
+        const updomainPaths = ['imagining', 'blog', 'shop', 'none']; // примеры
         return updomainPaths.includes(path);
     }
     
@@ -88,91 +89,78 @@ class VSBrowserAPI {
         const basePath = this.getBasePath(baseUrl);
         const baseTag = `<base href="${basePath}">`;
         
-        // Вставляем тег <base> для корректной обработки относительных ресурсов
         if (content.includes('</head>')) {
             content = content.replace('</head>', `${baseTag}</head>`);
         } else if (content.includes('<head>')) {
             content = content.replace('<head>', `<head>${baseTag}`);
         } else {
-            // Если нет <head>, добавляем его
             content = `<head>${baseTag}</head>` + content;
         }
         
-        // Перехват ссылок (href)
         content = content.replace(/href="([^"]*)"/gi, (match, href) => {
             return this.processHref(href, baseUrl, match);
         });
         
-        // Перехват действий форм (action)
         content = content.replace(/action="([^"]*)"/gi, (match, action) => {
             return this.processAction(action, baseUrl, match);
         });
         
-        // Инъекция скриптов для работы навигации внутри iframe
         content = this.injectNavigationScripts(content, baseUrl);
         
         return content;
     }
     
     processHref(href, baseUrl, originalMatch) {
-        // Пропускаем внешние ссылки, якоря, JS-ссылки и почтовые
         if (href.startsWith('http') || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) {
             return originalMatch;
         }
         
-        let newUrl;
-
         if (href.startsWith('/')) {
-            // Абсолютный путь (от корня домена, например /page.html)
             const domain = baseUrl.split('/')[0];
-            newUrl = domain + href;
+            const newUrl = domain + href;
+            return `href="javascript:void(0)" onclick="VSNavigate('${newUrl}')"`;
         } else {
-            // Относительный путь (например example.html)
-            newUrl = this.resolveRelativeUrl(baseUrl, href);
+            const newUrl = this.resolveRelativeUrl(baseUrl, href);
+            return `href="javascript:void(0)" onclick="VSNavigate('${newUrl}')"`;
         }
-
-        // Заменяем href на вызов функции навигации в родительском окне
-        return `href="javascript:void(0)" onclick="VSNavigate('${newUrl}')"`;
     }
     
     processAction(action, baseUrl, originalMatch) {
-        // Пропускаем внешние ссылки или пустые действия
         if (action.startsWith('http') || !action) {
             return originalMatch;
         }
         
-        let newUrl;
-
         if (action.startsWith('/')) {
             const domain = baseUrl.split('/')[0];
-            newUrl = domain + action;
+            const newUrl = domain + action;
+            return `action="javascript:void(0)" onsubmit="return VSHandleForm(this, '${newUrl}')"`;
         } else {
-            newUrl = this.resolveRelativeUrl(baseUrl, action);
+            const newUrl = this.resolveRelativeUrl(baseUrl, action);
+            return `action="javascript:void(0)" onsubmit="return VSHandleForm(this, '${newUrl}')"`;
         }
-
-        // Заменяем action на вызов функции обработки формы
-        return `action="javascript:void(0)" onsubmit="return VSHandleForm(this, '${newUrl}')"`;
     }
     
     resolveRelativeUrl(baseUrl, relativeUrl) {
         const baseParts = baseUrl.split('/').filter(part => part);
         const relativeParts = relativeUrl.split('/').filter(part => part);
         
-        // Если baseUrl - это путь к файлу (т.е. нет слеша в конце, и есть расширение), удаляем имя файла
-        if (baseParts.length > 1 && baseParts[baseParts.length - 1].includes('.')) {
-             baseParts.pop();
-        } else if (baseParts.length > 1 && !baseUrl.endsWith('/')) {
-            // Если это просто папка без слеша в конце (site.vs/folder), то удаляем "folder" 
-            // так как в функции resolveUrlPath он будет преобразован в start.html
-            baseParts.pop();
+        if (baseParts.length > 1) {
+            const lastPart = baseParts[baseParts.length - 1];
+            
+            // Если последний сегмент содержит точку, и это не домен, значит, это имя файла.
+            // Нужно удалить его, чтобы получить путь к папке.
+            // Например: site.vs/folder/file.html -> pop file.html
+            // Например: site.vs/folder -> не pop, потому что 'folder' - это папка.
+            if (lastPart.includes('.') && lastPart !== baseParts[0]) {
+                baseParts.pop(); 
+            }
         }
-
+        
         for (const part of relativeParts) {
             if (part === '..') {
-                // Переход на один уровень вверх, если это не домен
-                if (baseParts.length > 1) baseParts.pop();
+                // Запрещаем переход выше домена
+                if (baseParts.length > 1) baseParts.pop(); 
             } else if (part !== '.') {
-                // Пропускаем текущую директорию
                 baseParts.push(part);
             }
         }
@@ -199,26 +187,20 @@ class VSBrowserAPI {
     injectNavigationScripts(content, baseUrl) {
         const scripts = `
             <script>
-                // Глобальная функция для навигации, вызывается из iframe
                 function VSNavigate(url) {
-                    // Внешние ссылки открываем в новом окне
                     if (url.startsWith('http')) {
                         window.open(url, '_blank');
                     } else {
-                        // Внутренние ссылки передаем родительскому браузеру
                         window.parent.navigateTo(url);
                     }
                 }
                 
-                // Глобальная функция для обработки форм
                 function VSHandleForm(form, actionUrl) {
                     console.log('Form submitted to:', actionUrl, form);
-                    // Сейчас просто перенаправляем на actionUrl, игнорируя данные формы
                     VSNavigate(actionUrl);
-                    return false; // Предотвращаем стандартную отправку формы
+                    return false;
                 }
                 
-                // Переопределение window.location, чтобы ссылки внутри iframe работали через родительский браузер
                 const originalLocation = window.location;
                 Object.defineProperty(window, 'location', {
                     get: function() {
@@ -237,13 +219,12 @@ class VSBrowserAPI {
         if (content.includes('</body>')) {
             content = content.replace('</body>', `${scripts}</body>`);
         } else {
-            content += scripts; // Если нет </body>, добавляем в конец
+            content += scripts;
         }
         
         return content;
     }
     
-    // Функция для получения списка верифицированных сайтов (оставлена как заглушка)
     async getVerifiedSites() {
         try {
             const response = await fetch(this.verifiedFile);
@@ -261,7 +242,6 @@ class VSBrowserAPI {
 }
 
 const vsBrowser = new VSBrowserAPI();
-// Глобальная функция для вызова из browser.html
 async function loadWebsite(url) {
     return await vsBrowser.loadWebsite(url);
 }
