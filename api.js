@@ -38,39 +38,49 @@ class VSBrowserAPI {
     }
     
     resolveUrlPath(url) {
-        // Обработка поддоменов типа my.site.vs (через .downdomain)
-        if (this.isSubdomain(url)) {
-            const parts = url.split('.');
-            const subdomain = parts[0];
-            const mainDomain = parts[1];
-            return `${mainDomain}/${subdomain}.downdomain/start.html`;
+        const urlParts = url.split('/');
+        const domain = urlParts[0];
+        const path = urlParts.slice(1).join('/'); // Путь после домена (например: example.html или folder/page.html)
+
+        // 1. Обработка поддоменов (например: my.site.vs или my.site.vs/page.html)
+        if (this.isSubdomain(domain)) {
+            const domainParts = domain.split('.');
+            const subdomain = domainParts[0];
+            const mainDomain = domainParts[1];
+            
+            if (path) {
+                // Если есть путь: site/subdomain.downdomain/path
+                return `${mainDomain}/${subdomain}.downdomain/${path}`;
+            } else {
+                // Если пути нет: site/subdomain.downdomain/start.html
+                return `${mainDomain}/${subdomain}.downdomain/start.html`;
+            }
         }
         
-        // Обработка путей типа site.vs/updomain (через .updomain)
-        if (url.includes('/')) {
-            const [domain, ...pathParts] = url.split('/');
-            const siteName = domain.replace('.vs', '');
-            const path = pathParts.join('/');
-            
+        // 2. Обработка обычных доменов и путей (например: site.vs/updomain или site.vs/page.html)
+        
+        const siteName = domain.replace('.vs', '');
+
+        if (path) {
             // Проверяем, является ли первый элемент пути .updomain папкой
-            const firstPath = pathParts[0];
-            if (firstPath && this.isUpdomainPath(siteName, firstPath)) {
+            const firstPath = urlParts[1];
+            if (this.isUpdomainPath(siteName, firstPath)) {
+                // Если это updomain, то всегда идет на start.html в папке .updomain
                 return `${siteName}/${firstPath}.updomain/start.html`;
             }
             
-            // Обычные пути (site.vs/example.html или site.vs/folder/)
+            // Обычные пути
             if (path.includes('.') && !path.endsWith('/')) {
-                // Путь к файлу
+                // Путь к файлу (например: site.vs/page.html)
                 return `${siteName}/${path}`;
             } else {
-                // Путь к папке
+                // Путь к папке (например: site.vs/folder)
                 const cleanPath = path.endsWith('/') ? path.slice(0, -1) : path;
                 return `${siteName}/${cleanPath}/start.html`;
             }
         }
         
         // Простой домен типа site.vs
-        const siteName = url.replace('.vs', '');
         return `${siteName}/start.html`;
     }
     
@@ -81,7 +91,7 @@ class VSBrowserAPI {
     
     isUpdomainPath(siteName, path) {
         // Для демо просто проверяем по известным путям
-        const updomainPaths = ['imagining', 'blog', 'shop', 'none']; // примеры
+        const updomainPaths = ['imagining', 'blog', 'shop', 'none']; 
         return updomainPaths.includes(path);
     }
     
@@ -148,9 +158,7 @@ class VSBrowserAPI {
             const lastPart = baseParts[baseParts.length - 1];
             
             // Если последний сегмент содержит точку, и это не домен, значит, это имя файла.
-            // Нужно удалить его, чтобы получить путь к папке.
-            // Например: site.vs/folder/file.html -> pop file.html
-            // Например: site.vs/folder -> не pop, потому что 'folder' - это папка.
+            // Удаляем его, чтобы получить путь к папке.
             if (lastPart.includes('.') && lastPart !== baseParts[0]) {
                 baseParts.pop(); 
             }
