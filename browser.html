@@ -1,311 +1,142 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VS Browser</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; background: #f0f0f0; }
-        
-        .browser-header {
-            background: #2c3e50;
-            color: white;
-            padding: 10px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .address-bar {
-            flex: 1;
-            padding: 8px 12px;
-            border: none;
-            border-radius: 20px;
-            font-size: 14px;
-        }
-        
-        .nav-buttons button {
-            background: none;
-            border: none;
-            color: white;
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-        
-        .browser-frame {
-            width: 100%;
-            height: calc(100vh - 90px);
-            border: none;
-            background: white;
-        }
-        
-        .loading {
-            padding: 20px;
-            text-align: center;
-            color: #666;
-        }
-        
-        .verified-badge {
-            background: #27ae60;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            margin-left: 10px;
-            display: inline-flex;
-            align-items: center;
-            gap: 4px;
-        }
-        
-        .settings-panel {
-            background: #34495e;
-            padding: 10px;
-            color: white;
-            display: none;
-        }
-        
-        .settings-toggle {
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-            padding: 5px;
-        }
-        
-        .search-suggestions {
-            position: absolute;
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            width: calc(100% - 120px);
-            max-height: 200px;
-            overflow-y: auto;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }
-        
-        .search-suggestion {
-            padding: 10px;
-            cursor: pointer;
-            border-bottom: 1px solid #eee;
-        }
-        
-        .search-suggestion:hover {
-            background: #f5f5f5;
-        }
-        
-        .search-suggestion.verified::after {
-            content: "✓";
-            color: #27ae60;
-            margin-left: 5px;
-            font-weight: bold;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Виртуальный браузер .vs</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin:0; height:100vh; display:flex; flex-direction:column; }
+    .toolbar { display:flex; gap:8px; padding:8px; align-items:center; background:#f3f4f6; border-bottom:1px solid #ddd; }
+    .controls { display:flex; gap:6px; align-items:center; }
+    button { padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:white; cursor:pointer; }
+    input.address { flex:1; padding:8px; border-radius:6px; border:1px solid #ccc; }
+    #vs-status { margin-left:12px; color:#666; font-size:0.9rem; }
+    .content { flex:1; display:flex; }
+    iframe#vs-content-frame { width:100%; border:0; height:100%; }
+    .left { padding:8px; width:240px; border-right:1px solid #eee; background:#fbfbfb; }
+    .sites-list { list-style:none; padding:0; margin:0; }
+    .sites-list li { padding:6px 4px; cursor:pointer; border-radius:4px; }
+    .sites-list li:hover { background:#eee; }
+    .footer { padding:6px 8px; font-size:0.85rem; color:#777; border-top:1px solid #eee; background:#fafafa; }
+  </style>
 </head>
 <body>
-    <div class="browser-header">
-        <button onclick="goBack()">←</button>
-        <button onclick="goForward()">→</button>
-        <button onclick="refresh()">↻</button>
-        
-        <div style="flex: 1; position: relative;">
-            <input type="text" class="address-bar" id="addressBar" 
-                   placeholder="Введите адрес или поисковый запрос..." 
-                   onkeypress="handleAddressEnter(event)"
-                   oninput="showSearchSuggestions()">
-            <div class="search-suggestions" id="searchSuggestions"></div>
-        </div>
-        
-        <button onclick="goToAddress()">Перейти</button>
-        <button class="settings-toggle" onclick="toggleSettings()">⚙️</button>
+  <div class="toolbar">
+    <div class="controls">
+      <button id="btn-back" title="Назад">←</button>
+      <button id="btn-forward" title="Вперёд">→</button>
+      <button id="btn-reload" title="Обновить">⟲</button>
     </div>
-    
-    <div class="settings-panel" id="settingsPanel">
-        <h3>Настройки браузера</h3>
-        <div>
-            <label>
-                <input type="checkbox" id="autoRedirectSearch" checked>
-                Автоматический поиск при вводе текста
-            </label>
-        </div>
-        <div>
-            <label>
-                <input type="checkbox" id="showVerifiedBadge" checked>
-                Показывать проверенные сайты
-            </label>
-        </div>
-    </div>
-    
-    <iframe class="browser-frame" id="browserFrame" 
-            sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
 
-    <script src="api.js"></script>
-    <script>
-        let history = [];
-        let currentHistoryIndex = -1;
-        let verifiedSites = [];
-        
-        // Загружаем verified сайты при запуске
-        async function loadVerifiedSites() {
-            verifiedSites = await vsBrowser.getVerifiedSites();
-        }
-        
-        function handleAddressEnter(event) {
-            if (event.key === 'Enter') {
-                hideSearchSuggestions();
-                goToAddress();
-            }
-        }
-        
-        async function showSearchSuggestions() {
-            const input = document.getElementById('addressBar').value.trim();
-            const suggestions = document.getElementById('searchSuggestions');
-            
-            if (input.length < 2) {
-                suggestions.style.display = 'none';
-                return;
-            }
-            
-            // Получаем все доступные сайты для поиска
-            const allSites = await getAllAvailableSites();
-            const matchedSites = allSites.filter(site => 
-                site.toLowerCase().includes(input.toLowerCase())
-            );
-            
-            if (matchedSites.length === 0) {
-                suggestions.style.display = 'none';
-                return;
-            }
-            
-            suggestions.innerHTML = matchedSites.map(site => {
-                const isVerified = verifiedSites.includes(site);
-                return `<div class="search-suggestion ${isVerified ? 'verified' : ''}" onclick="selectSuggestion('${site}')">
-                    ${site} ${isVerified ? '✓' : ''}
-                </div>`;
-            }).join('');
-            
-            suggestions.style.display = 'block';
-        }
-        
-        function hideSearchSuggestions() {
-            document.getElementById('searchSuggestions').style.display = 'none';
-        }
-        
-        function selectSuggestion(site) {
-            document.getElementById('addressBar').value = site;
-            hideSearchSuggestions();
-            goToAddress();
-        }
-        
-        async function getAllAvailableSites() {
-            // В реальной реализации здесь был бы запрос к API для получения списка сайтов
-            // Пока используем статический список + verified сайты
-            const staticSites = ['mail.vs', 'youtube.vs', 'google.vs', 'welcome.vs', 'searchit.vs'];
-            return [...new Set([...staticSites, ...verifiedSites])];
-        }
-        
-        async function goToAddress() {
-            const address = document.getElementById('addressBar').value.trim();
-            if (address) {
-                await navigateTo(address);
-            }
-        }
-        
-        async function navigateTo(url) {
-            const frame = document.getElementById('browserFrame');
-            const loadingHtml = '<div class="loading">Загрузка...</div>';
-            frame.srcdoc = loadingHtml;
-            
-            try {
-                // Проверяем, является ли ввод поисковым запросом (не URL)
-                if (!isValidUrl(url) && document.getElementById('autoRedirectSearch').checked) {
-                    url = `searchit.vs/search/${encodeURIComponent(url)}`;
-                }
-                
-                const content = await loadWebsite(url);
-                
-                // Проверяем verified статус
-                const domain = url.split('/')[0];
-                const isVerified = verifiedSites.includes(domain);
-                
-                history = history.slice(0, currentHistoryIndex + 1);
-                history.push(url);
-                currentHistoryIndex = history.length - 1;
-                
-                document.getElementById('addressBar').value = url;
-                
-                // Добавляем verified badge в заголовок
-                if (isVerified && document.getElementById('showVerifiedBadge').checked) {
-                    frame.srcdoc = content.replace('</head>', `
-                        <style>
-                            .verified-notification {
-                                background: #27ae60;
-                                color: white;
-                                padding: 10px;
-                                text-align: center;
-                                font-size: 14px;
-                                border-bottom: 2px solid #219652;
-                            }
-                        </style>
-                        <div class="verified-notification">
-                            ✓ Этот сайт проверен Агенством Вестанетом
-                        </div>
-                    </head>`);
-                } else {
-                    frame.srcdoc = content;
-                }
-                
-            } catch (error) {
-                frame.srcdoc = `
-                    <div style="padding: 20px; text-align: center;">
-                        <h2>Ошибка загрузки</h2>
-                        <p>${error.message}</p>
-                        <p>Попробуйте другой адрес или <a href="javascript:void(0)" onclick="window.parent.navigateTo('searchit.vs')">воспользуйтесь поиском</a></p>
-                    </div>
-                `;
-            }
-        }
-        
-        function isValidUrl(input) {
-            // Простая проверка на URL (содержит .vs или начинается с http)
-            return input.includes('.vs') || input.startsWith('http') || input.includes('/');
-        }
-        
-        function goBack() {
-            if (currentHistoryIndex > 0) {
-                currentHistoryIndex--;
-                const url = history[currentHistoryIndex];
-                document.getElementById('addressBar').value = url;
-                navigateTo(url);
-            }
-        }
-        
-        function goForward() {
-            if (currentHistoryIndex < history.length - 1) {
-                currentHistoryIndex++;
-                const url = history[currentHistoryIndex];
-                document.getElementById('addressBar').value = url;
-                navigateTo(url);
-            }
-        }
-        
-        function refresh() {
-            if (history[currentHistoryIndex]) {
-                navigateTo(history[currentHistoryIndex]);
-            }
-        }
-        
-        function toggleSettings() {
-            const panel = document.getElementById('settingsPanel');
-            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-        }
-        
-        // Загружаем стартовую страницу и verified сайты
-        window.onload = async function() {
-            await loadVerifiedSites();
-            navigateTo('welcome.vs');
-        };
-    </script>
+    <input id="address" class="address" placeholder="Введите, например: gov.vs или название сайта (gov)" />
+    <button id="btn-go">Открыть</button>
+
+    <div id="vs-status">Готов</div>
+  </div>
+
+  <div class="content">
+    <div class="left">
+      <h4>Локальные сайты (папка /sites)</h4>
+      <p style="font-size:0.9rem;color:#555">Добавь папку в /sites с файлом <code>start.html</code>. Открой — <code>имя</code>.vs</p>
+      <ul id="sites" class="sites-list"></ul>
+      <div class="footer">Только сайты из /sites разрешены.</div>
+    </div>
+
+    <iframe id="vs-content-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+  </div>
+
+  <script type="module">
+    import { VSBrowserAPI } from './api.js';
+
+    const statusEl = document.getElementById('vs-status');
+    const vsBrowser = new VSBrowserAPI({ iframeId: 'vs-content-frame', statusEl });
+
+    // UI элементы
+    const address = document.getElementById('address');
+    const btnGo = document.getElementById('btn-go');
+    const btnBack = document.getElementById('btn-back');
+    const btnForward = document.getElementById('btn-forward');
+    const btnReload = document.getElementById('btn-reload');
+    const sitesList = document.getElementById('sites');
+    const iframe = document.getElementById('vs-content-frame');
+
+    // Попробуем подгрузить примерный список сайтов — но его может не быть.
+    // Вместо манифеста просто показываем подсказку; всё равно загрузка делается по вводу.
+    function renderHintSites() {
+      sitesList.innerHTML = '';
+      const hint = ['gov','blog','shop','demo']; // просто подсказки
+      hint.forEach(name => {
+        const li = document.createElement('li');
+        li.textContent = name + '.vs';
+        li.addEventListener('click', () => {
+          address.value = name + '.vs';
+          openAddress();
+        });
+        sitesList.appendChild(li);
+      });
+    }
+    renderHintSites();
+
+    async function openAddress() {
+      const val = address.value.trim();
+      if (!val) { statusEl.textContent = 'Введите имя сайта (например gov.vs)'; return; }
+      const res = await vsBrowser.load(val, true);
+      if (res.ok) {
+        address.value = `${res.site}.vs`;
+      }
+    }
+
+    btnGo.addEventListener('click', openAddress);
+    address.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') openAddress();
+    });
+
+    btnBack.addEventListener('click', async () => {
+      const r = await vsBrowser.back();
+      if (!r.ok) statusEl.textContent = 'В истории нет предыдущей страницы';
+    });
+    btnForward.addEventListener('click', async () => {
+      const r = await vsBrowser.forward();
+      if (!r.ok) statusEl.textContent = 'В истории нет следующей страницы';
+    });
+    btnReload.addEventListener('click', async () => {
+      const r = await vsBrowser.reload();
+      if (!r.ok) statusEl.textContent = 'Нет страницы для перезагрузки';
+    });
+
+    // Когда iframe загружает документ — инжектим наши обработчики ссылок/форм
+    iframe.addEventListener('load', () => {
+      // обновим адресную строку если история указывает
+      const entry = vsBrowser.history[vsBrowser.historyIndex];
+      if (entry && entry.site) {
+        address.value = `${entry.site}.vs`;
+      }
+
+      // подожди небольшую паузу — потом инжектим
+      setTimeout(() => {
+        vsBrowser.attachSandboxHandlers();
+      }, 50);
+    });
+
+    // Анимация статуса — отображаем короткие подсказки
+    const originalStatus = statusEl.textContent;
+    const statusObserver = new MutationObserver(() => {
+      // можно тут расширить, например подсвечивать
+    });
+    statusObserver.observe(statusEl, { characterData: true, childList: true, subtree: true });
+
+    // Автозагрузка: если в адресной строке в url что-то есть (git pages?), попробуем открыть
+    function checkUrlParams() {
+      const p = new URLSearchParams(location.search);
+      if (p.has('open')) {
+        address.value = p.get('open');
+        openAddress();
+      }
+    }
+    checkUrlParams();
+
+    // Совет: чтобы добавить сайт, в репо положи папку /sites/<name>/start.html
+    // Пример: /sites/gov/start.html -> откроется при вводе gov.vs
+  </script>
 </body>
 </html>
