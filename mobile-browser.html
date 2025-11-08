@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VS Mobile Browser</title>
+    <style>
+        /* ================================================= */
+        /* == БАЗОВЫЕ СТИЛИ И ОТЗЫВЧИВОСТЬ == */
+        /* ================================================= */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        /* Ограничиваем ширину для имитации мобильного устройства */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: #f8f8f8; 
+            color: #333;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Запрещаем прокрутку основного тела */
+        }
+        
+        /* ================================================= */
+        /* == ХЕДЕР (АДРЕСНАЯ СТРОКА) == */
+        /* ================================================= */
+        .browser-header {
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            padding: 8px 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0; /* Не сжимать при наличии фрейма */
+        }
+        
+        .address-bar {
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 14px;
+            background: #f3f3f3;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .address-bar:focus {
+            border-color: #3498db;
+        }
+        
+        .go-button {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+            flex-shrink: 0;
+        }
+        .go-button:hover {
+            background: #2980b9;
+        }
+        
+        /* ================================================= */
+        /* == КОНТЕНТ (ФРЕЙМЫ) == */
+        /* ================================================= */
+        .frame-container {
+            flex-grow: 1;
+            width: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .browser-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+            position: absolute;
+            top: 0;
+            left: 0;
+            visibility: hidden;
+            transition: visibility 0.3s;
+        }
+
+        .browser-frame.active {
+            visibility: visible;
+            z-index: 10; 
+        }
+
+        /* ================================================= */
+        /* == BOTTOM BAR (НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ) == */
+        /* ================================================= */
+        .bottom-bar {
+            background: #ffffff;
+            height: 50px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.1);
+            flex-shrink: 0;
+        }
+
+        .bottom-bar button {
+            background: none;
+            border: none;
+            color: #555;
+            padding: 5px 15px;
+            cursor: pointer;
+            font-size: 24px;
+            line-height: 1;
+        }
+
+        .bottom-bar button:hover {
+            color: #3498db;
+        }
+        
+        .tab-counter {
+            font-size: 14px;
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: #3498db;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            line-height: 18px;
+            text-align: center;
+            pointer-events: none;
+        }
+        
+        /* ================================================= */
+        /* == МОДАЛЬНОЕ ОКНО ВКЛАДОК == */
+        /* ================================================= */
+        .tabs-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            flex-direction: column;
+            z-index: 100;
+            padding: 20px;
+        }
+        
+        .tabs-modal.visible {
+            display: flex;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h2 {
+            color: white;
+            font-weight: 400;
+        }
+        
+        .modal-header button {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        .modal-tab-list {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+        
+        .modal-tab-item {
+            background: white;
+            margin-bottom: 10px;
+            padding: 15px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            cursor: pointer;
+        }
+
+        .modal-tab-item.active {
+            border: 2px solid #3498db;
+            padding: 13px; /* Компенсация толщины border */
+        }
+        
+        .tab-info {
+            flex: 1;
+            text-align: left;
+            overflow: hidden;
+        }
+        
+        .tab-title {
+            font-size: 16px;
+            font-weight: bold;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .tab-url {
+            font-size: 12px;
+            color: #777;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .modal-tab-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            color: #999;
+            cursor: pointer;
+            padding: 0 5px;
+            margin-left: 10px;
+        }
+
+        /* Состояние загрузки */
+        .loading {
+            padding: 40px;
+            text-align: center;
+            color: #666;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="browser-header">
+        <input type="text" class="address-bar" id="addressBar" 
+               placeholder="Введите адрес или поиск..." 
+               onkeypress="handleAddressEnter(event)">
+        
+        <button class="go-button" onclick="goToAddress()">Go</button>
+    </div>
+
+    <div class="frame-container" id="frameContainer">
+        </div>
+
+    <div class="bottom-bar">
+        <button onclick="goBack()" title="Назад">◀</button>
+        <button onclick="goForward()" title="Вперед">▶</button>
+        <button onclick="refresh()" title="Обновить">↻</button>
+        <button onclick="showTabsModal()" title="Вкладки">
+            <span style="position: relative; display: inline-block;">
+                ☰
+                <span class="tab-counter" id="tabCounter">1</span>
+            </span>
+        </button>
+        <button onclick="openNewTab('welcome.vs')" title="Новая вкладка">+</button>
+    </div>
+    
+    <div class="tabs-modal" id="tabsModal">
+        <div class="modal-header">
+            <h2>Вкладки (<span id="modalTabCount">1</span>)</h2>
+            <button onclick="hideTabsModal()">Готово</button>
+        </div>
+        <div class="modal-tab-list" id="modalTabList">
+            </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script>
+        let tabs = [];
+        let activeTabIndex = -1;
+
+        // *** Вспомогательные функции DOM ***
+
+        function getActiveTab() {
+            return tabs[activeTabIndex];
+        }
+
+        function getActiveFrame() {
+            return document.getElementById(`frame-${activeTabIndex}`);
+        }
+
+        function getActiveAddressBar() {
+            return document.getElementById('addressBar');
+        }
+        
+        // *** Управление модальным окном вкладок ***
+        
+        function updateTabCount() {
+            document.getElementById('tabCounter').textContent = tabs.length;
+            document.getElementById('modalTabCount').textContent = tabs.length;
+        }
+
+        function showTabsModal() {
+            const modalList = document.getElementById('modalTabList');
+            modalList.innerHTML = ''; // Очищаем
+            
+            tabs.forEach((tab, index) => {
+                const item = document.createElement('div');
+                item.className = 'modal-tab-item' + (index === activeTabIndex ? ' active' : '');
+                item.onclick = () => { switchToTab(index); hideTabsModal(); };
+
+                const info = document.createElement('div');
+                info.className = 'tab-info';
+                info.innerHTML = `<div class="tab-title">${tab.title}</div><div class="tab-url">${tab.url}</div>`;
+                item.appendChild(info);
+
+                const closeButton = document.createElement('button');
+                closeButton.className = 'modal-tab-close';
+                closeButton.innerHTML = '×';
+                closeButton.onclick = (e) => {
+                    e.stopPropagation();
+                    closeTab(index);
+                    // Обновляем список модального окна после закрытия
+                    showTabsModal(); 
+                };
+                item.appendChild(closeButton);
+
+                modalList.appendChild(item);
+            });
+            
+            document.getElementById('tabsModal').classList.add('visible');
+        }
+
+        function hideTabsModal() {
+            document.getElementById('tabsModal').classList.remove('visible');
+        }
+
+        // *** Управление вкладками ***
+
+        function switchToTab(index) {
+            if (index === activeTabIndex) return;
+
+            // Скрываем текущий фрейм
+            if (activeTabIndex !== -1) {
+                const oldFrame = document.getElementById(`frame-${activeTabIndex}`);
+                if (oldFrame) oldFrame.classList.remove('active');
+            }
+
+            activeTabIndex = index;
+
+            // Показываем новый фрейм
+            const newFrame = document.getElementById(`frame-${activeTabIndex}`);
+            newFrame.classList.add('active');
+            
+            // Обновляем UI
+            getActiveAddressBar().value = tabs[activeTabIndex].url;
+            document.title = tabs[activeTabIndex].title + ' | VS Mobile Browser';
+        }
+
+        function closeTab(index) {
+            if (tabs.length === 1) {
+                 // Не закрываем последнюю вкладку, просто обновляем ее на welcome.vs
+                 tabs[0].history = [];
+                 tabs[0].historyIndex = -1;
+                 navigateTo('welcome.vs');
+                 return;
+            }
+            
+            const frameContainer = document.getElementById('frameContainer');
+            const frameToRemove = document.getElementById(`frame-${index}`);
+            
+            if (frameToRemove) {
+                frameContainer.removeChild(frameToRemove);
+            }
+
+            tabs.splice(index, 1);
+
+            if (index === activeTabIndex) {
+                // Если закрыли активную вкладку, переключаемся на соседнюю
+                const newIndex = Math.min(index, tabs.length - 1);
+                activeTabIndex = -1;
+                switchToTab(newIndex);
+            } else if (index < activeTabIndex) {
+                // Если закрыли вкладку до активной, сдвигаем активный индекс
+                activeTabIndex--;
+            }
+            
+            updateTabCount();
+        }
+
+        function openNewTab(url) {
+            const newIndex = tabs.length;
+            
+            // Создаем новый элемент фрейма
+            const newFrame = document.createElement('iframe');
+            newFrame.className = 'browser-frame';
+            newFrame.id = `frame-${newIndex}`;
+            newFrame.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin allow-popups'); 
+            document.getElementById('frameContainer').appendChild(newFrame);
+
+            // Создаем объект вкладки
+            tabs.push({
+                url: '',
+                title: 'Загрузка...',
+                history: [],
+                historyIndex: -1
+            });
+
+            // Переключаемся на новую вкладку
+            switchToTab(newIndex);
+            
+            updateTabCount();
+            navigateTo(url);
+        }
+
+        // *** Управление навигацией ***
+
+        function handleAddressEnter(event) {
+            if (event.key === 'Enter') {
+                goToAddress();
+            }
+        }
+        
+        function goToAddress() {
+            const address = getActiveAddressBar().value.trim();
+            if (address) {
+                // Всегда открываем в активной вкладке
+                navigateTo(address); 
+            }
+        }
+        
+        // Эта функция должна быть глобальной для вызова из iframe
+        window.navigateTo = async function(url) {
+            const frame = getActiveFrame();
+            const currentTab = getActiveTab();
+            
+            if (!frame || !currentTab) return;
+
+            const loadingHtml = '<div class="loading">Загрузка...</div>';
+            frame.srcdoc = loadingHtml;
+            currentTab.title = 'Загрузка...';
+            
+            try {
+                // Используем функцию из api.js
+                const content = await loadWebsite(url);
+                
+                // Обновляем историю и URL
+                currentTab.history = currentTab.history.slice(0, currentTab.historyIndex + 1);
+                currentTab.history.push(url);
+                currentTab.historyIndex = currentTab.history.length - 1;
+                currentTab.url = url;
+                
+                getActiveAddressBar().value = url;
+                frame.srcdoc = content;
+
+                // Попытка извлечь заголовок
+                const match = content.match(/<title>(.*?)<\/title>/i);
+                currentTab.title = match ? match[1].trim() : url;
+                document.title = currentTab.title + ' | VS Mobile Browser';
+
+            } catch (error) {
+                currentTab.url = url;
+                getActiveAddressBar().value = url;
+                currentTab.title = 'Ошибка';
+                document.title = currentTab.title + ' | VS Mobile Browser';
+
+                frame.srcdoc = `
+                    <div style="padding: 20px; text-align: center; color: #e74c3c;">
+                        <h2>❌ Ошибка загрузки</h2>
+                        <p>${error.message}</p>
+                        <p>Попробуйте другой адрес</p>
+                    </div>
+                `;
+            } finally {
+                updateTabCount();
+            }
+        }
+        
+        // Функция для загрузки страницы, когда мы идем вперед/назад в истории
+        async function loadFromHistory(url) {
+            const frame = getActiveFrame();
+            const currentTab = getActiveTab();
+
+            if (!frame || !currentTab) return;
+
+            const loadingHtml = '<div class="loading">Загрузка...</div>';
+            frame.srcdoc = loadingHtml;
+            currentTab.title = 'Загрузка...';
+
+            try {
+                const content = await loadWebsite(url);
+                currentTab.url = url;
+                getActiveAddressBar().value = url;
+                
+                // Попытка извлечь заголовок
+                const match = content.match(/<title>(.*?)<\/title>/i);
+                currentTab.title = match ? match[1].trim() : url;
+                document.title = currentTab.title + ' | VS Mobile Browser';
+
+                frame.srcdoc = content;
+            } catch (error) {
+                 currentTab.title = 'Ошибка';
+                 document.title = currentTab.title + ' | VS Mobile Browser';
+                 frame.srcdoc = `
+                    <div style="padding: 20px; text-align: center; color: #e74c3c;">
+                        <h2>❌ Ошибка загрузки</h2>
+                        <p>${error.message}</p>
+                        <p>Попробуйте другой адрес</p>
+                    </div>
+                `;
+            } finally {
+                updateTabCount();
+            }
+        }
+
+        function goBack() {
+            const currentTab = getActiveTab();
+            if (currentTab && currentTab.historyIndex > 0) {
+                currentTab.historyIndex--;
+                const url = currentTab.history[currentTab.historyIndex];
+                loadFromHistory(url);
+            }
+        }
+        
+        function goForward() {
+            const currentTab = getActiveTab();
+            if (currentTab && currentTab.historyIndex < currentTab.history.length - 1) {
+                currentTab.historyIndex++;
+                const url = currentTab.history[currentTab.historyIndex];
+                loadFromHistory(url);
+            }
+        }
+        
+        function refresh() {
+            const currentTab = getActiveTab();
+            if (currentTab && currentTab.history[currentTab.historyIndex]) {
+                navigateTo(currentTab.history[currentTab.historyIndex]);
+            }
+        }
+        
+        // Загружаем стартовую страницу при запуске
+        window.onload = function() {
+            openNewTab('welcome.vs');
+        };
+    </script>
+</body>
+</html>
