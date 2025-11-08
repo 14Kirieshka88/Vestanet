@@ -9,13 +9,13 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { 
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: #e9eef2; /* Светло-серый фон */
+            background: #e9eef2;
             color: #333;
         }
         
         /* Хедер браузера */
         .browser-header {
-            background: linear-gradient(90deg, #34495e, #5d7890); /* Градиент */
+            background: linear-gradient(90deg, #34495e, #5d7890);
             color: white;
             padding: 8px 15px;
             display: flex;
@@ -36,10 +36,6 @@
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
             transition: box-shadow 0.2s;
         }
-        .address-bar:focus {
-            outline: none;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2), 0 0 0 2px rgba(93, 120, 144, 0.5);
-        }
         
         /* Кнопки навигации */
         .nav-buttons button,
@@ -49,7 +45,7 @@
             color: white;
             padding: 6px 12px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 18px; /* Увеличил размер для символов */
             border-radius: 4px;
             transition: background 0.2s, transform 0.1s;
         }
@@ -57,12 +53,9 @@
         .nav-buttons button:hover {
             background: rgba(255, 255, 255, 0.1);
         }
-        .nav-buttons button:active {
-            transform: scale(0.95);
-        }
         
         .go-button {
-            background: #2ecc71; /* Зеленая кнопка "Перейти" */
+            background: #2ecc71;
             border-radius: 20px;
             font-weight: bold;
             font-size: 14px;
@@ -72,14 +65,88 @@
             background: #27ae60;
         }
         
-        /* Фрейм для контента */
-        .browser-frame {
-            width: 100%;
-            height: calc(100vh - 46px); /* Уменьшил высоту, чтобы компенсировать padding хедера */
-            border: none;
-            background: white;
+        /* Стили для вкладок */
+        .tab-bar {
+            background: #e1e8ed;
+            display: flex;
+            height: 35px;
+            overflow-x: auto;
+            white-space: nowrap;
         }
         
+        .tab {
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            border-right: 1px solid #c8d0d6;
+            cursor: pointer;
+            background: #f0f3f5;
+            color: #34495e;
+            font-size: 14px;
+            transition: background 0.2s;
+            max-width: 200px;
+            min-width: 100px;
+        }
+        
+        .tab:hover {
+            background: #d4dde4;
+        }
+
+        .tab.active {
+            background: white;
+            border-bottom: 2px solid #34495e;
+            position: relative;
+            z-index: 1;
+        }
+
+        .tab-close {
+            margin-left: 10px;
+            font-size: 16px;
+            color: #a0a0a0;
+            cursor: pointer;
+            transition: color 0.1s;
+        }
+
+        .tab-close:hover {
+            color: #333;
+        }
+
+        .new-tab-button {
+            background: none;
+            border: none;
+            color: #34495e;
+            font-size: 20px;
+            padding: 0 10px;
+            cursor: pointer;
+        }
+        .new-tab-button:hover {
+            background: #d4dde4;
+        }
+        
+        /* Контейнер для фреймов */
+        .frame-container {
+            width: 100%;
+            height: calc(100vh - 89px); /* 54px (header) + 35px (tab-bar) */
+            position: relative;
+        }
+
+        .browser-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .browser-frame.active {
+            opacity: 1;
+            z-index: 0;
+        }
+
         /* Состояние загрузки */
         .loading {
             padding: 40px;
@@ -92,9 +159,9 @@
 <body>
     <div class="browser-header">
         <div class="nav-buttons">
-            <button onclick="goBack()" title="Назад">⬅️</button>
-            <button onclick="goForward()" title="Вперед">➡️</button>
-            <button onclick="refresh()" title="Обновить">🔄</button>
+            <button onclick="goBack()" title="Назад">◀</button>
+            <button onclick="goForward()" title="Вперед">▶</button>
+            <button onclick="refresh()" title="Обновить">↻</button>
         </div>
         
         <input type="text" class="address-bar" id="addressBar" 
@@ -103,16 +170,144 @@
         
         <button class="go-button" onclick="goToAddress()">Перейти</button>
     </div>
-    
-    <iframe class="browser-frame" id="browserFrame" 
-            sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+
+    <div class="tab-bar" id="tabBar">
+        <button class="new-tab-button" onclick="openNewTab('welcome.vs')" title="Новая вкладка">+</button>
+    </div>
+
+    <div class="frame-container" id="frameContainer">
+        </div>
 
     <script src="api.js"></script>
     <script>
-        // ... (Весь JavaScript код остается без изменений)
-        let history = [];
-        let currentHistoryIndex = -1;
+        let tabs = []; // Массив для хранения всех данных вкладок
+        let activeTabIndex = -1;
+
+        // *** Вспомогательные функции DOM ***
+
+        function getActiveTab() {
+            return tabs[activeTabIndex];
+        }
+
+        function getActiveFrame() {
+            return document.getElementById(`frame-${activeTabIndex}`);
+        }
+
+        function getActiveAddressBar() {
+            return document.getElementById('addressBar');
+        }
+
+        // *** Управление вкладками ***
+
+        function updateTabBar() {
+            const tabBar = document.getElementById('tabBar');
+            tabBar.innerHTML = ''; // Очищаем панель
+            
+            // Кнопка "Новая вкладка"
+            const newTabButton = document.createElement('button');
+            newTabButton.className = 'new-tab-button';
+            newTabButton.setAttribute('onclick', "openNewTab('welcome.vs')");
+            newTabButton.innerHTML = '+';
+            tabBar.appendChild(newTabButton);
+
+
+            tabs.forEach((tab, index) => {
+                const tabElement = document.createElement('div');
+                tabElement.className = 'tab' + (index === activeTabIndex ? ' active' : '');
+                tabElement.setAttribute('data-index', index);
+                tabElement.onclick = () => switchToTab(index);
+
+                const titleSpan = document.createElement('span');
+                titleSpan.textContent = tab.title || tab.url; // Показываем заголовок или URL
+                tabElement.appendChild(titleSpan);
+
+                const closeSpan = document.createElement('span');
+                closeSpan.className = 'tab-close';
+                closeSpan.innerHTML = '×';
+                closeSpan.onclick = (e) => {
+                    e.stopPropagation(); // Останавливаем переключение вкладки при нажатии на закрытие
+                    closeTab(index);
+                };
+                tabElement.appendChild(closeSpan);
+
+                tabBar.appendChild(tabElement);
+            });
+        }
         
+        function switchToTab(index) {
+            if (index === activeTabIndex) return;
+
+            // Скрываем текущий фрейм
+            if (activeTabIndex !== -1) {
+                const oldFrame = document.getElementById(`frame-${activeTabIndex}`);
+                if (oldFrame) oldFrame.className = 'browser-frame';
+                document.querySelector(`.tab[data-index="${activeTabIndex}"]`).classList.remove('active');
+            }
+
+            activeTabIndex = index;
+
+            // Показываем новый фрейм
+            const newFrame = document.getElementById(`frame-${activeTabIndex}`);
+            newFrame.className = 'browser-frame active';
+            document.querySelector(`.tab[data-index="${activeTabIndex}"]`).classList.add('active');
+
+            // Обновляем адресную строку
+            getActiveAddressBar().value = tabs[activeTabIndex].url;
+        }
+
+        function closeTab(index) {
+            const frameContainer = document.getElementById('frameContainer');
+            const frameToRemove = document.getElementById(`frame-${index}`);
+            
+            if (frameToRemove) {
+                frameContainer.removeChild(frameToRemove);
+            }
+
+            tabs.splice(index, 1);
+
+            if (tabs.length === 0) {
+                // Если нет вкладок, открываем новую
+                openNewTab('welcome.vs');
+            } else if (index === activeTabIndex) {
+                // Если закрыли активную вкладку, переключаемся на предыдущую или первую
+                const newIndex = Math.min(index, tabs.length - 1);
+                activeTabIndex = -1; // Сбрасываем для корректного переключения
+                switchToTab(newIndex);
+            } else if (index < activeTabIndex) {
+                // Если закрыли вкладку до активной, сдвигаем активный индекс
+                activeTabIndex--;
+            }
+            
+            updateTabBar();
+        }
+
+        function openNewTab(url) {
+            const newIndex = tabs.length;
+            
+            // Создаем новый элемент фрейма
+            const newFrame = document.createElement('iframe');
+            newFrame.className = 'browser-frame';
+            newFrame.id = `frame-${newIndex}`;
+            newFrame.setAttribute('sandbox', 'allow-scripts allow-forms allow-same-origin');
+            document.getElementById('frameContainer').appendChild(newFrame);
+
+            // Создаем объект вкладки
+            tabs.push({
+                url: '',
+                title: 'Новая вкладка',
+                history: [],
+                historyIndex: -1
+            });
+
+            // Переключаемся на новую вкладку
+            switchToTab(newIndex);
+            
+            updateTabBar();
+            navigateTo(url);
+        }
+
+        // *** Управление навигацией ***
+
         function handleAddressEnter(event) {
             if (event.key === 'Enter') {
                 goToAddress();
@@ -120,26 +315,46 @@
         }
         
         function goToAddress() {
-            const address = document.getElementById('addressBar').value.trim();
+            const address = getActiveAddressBar().value.trim();
             if (address) {
                 navigateTo(address);
             }
         }
         
-        async function navigateTo(url) {
-            const frame = document.getElementById('browserFrame');
+        // Эта функция должна быть глобальной для вызова из iframe
+        window.navigateTo = async function(url) {
+            const frame = getActiveFrame();
+            const currentTab = getActiveTab();
+            
+            if (!frame || !currentTab) return; // Проверка, что вкладка существует
+
             const loadingHtml = '<div class="loading">Загрузка...</div>';
             frame.srcdoc = loadingHtml;
             
             try {
                 const content = await loadWebsite(url);
-                history = history.slice(0, currentHistoryIndex + 1);
-                history.push(url);
-                currentHistoryIndex = history.length - 1;
                 
-                document.getElementById('addressBar').value = url;
+                // Обновляем историю и URL
+                currentTab.history = currentTab.history.slice(0, currentTab.historyIndex + 1);
+                currentTab.history.push(url);
+                currentTab.historyIndex = currentTab.history.length - 1;
+                currentTab.url = url;
+                
+                getActiveAddressBar().value = url;
                 frame.srcdoc = content;
+
+                // Попытка извлечь заголовок из загруженного контента
+                const match = content.match(/<title>(.*?)<\/title>/i);
+                currentTab.title = match ? match[1].trim() : url;
+
+                updateTabBar();
+
             } catch (error) {
+                currentTab.url = url; // Все равно обновляем URL
+                getActiveAddressBar().value = url;
+                currentTab.title = 'Ошибка';
+                updateTabBar();
+
                 frame.srcdoc = `
                     <div style="padding: 20px; text-align: center; color: #e74c3c;">
                         <h2>❌ Ошибка загрузки</h2>
@@ -150,36 +365,29 @@
             }
         }
         
-        function goBack() {
-            if (currentHistoryIndex > 0) {
-                currentHistoryIndex--;
-                const url = history[currentHistoryIndex];
-                document.getElementById('addressBar').value = url;
-                // Вместо navigateTo, используем прямую загрузку из истории для корректного отображения индекса
-                loadFromHistory(url);
-            }
-        }
-        
-        function goForward() {
-            if (currentHistoryIndex < history.length - 1) {
-                currentHistoryIndex++;
-                const url = history[currentHistoryIndex];
-                document.getElementById('addressBar').value = url;
-                // Вместо navigateTo, используем прямую загрузку из истории для корректного отображения индекса
-                loadFromHistory(url);
-            }
-        }
-
+        // Функция для загрузки страницы, когда мы идем вперед/назад в истории
         async function loadFromHistory(url) {
-            const frame = document.getElementById('browserFrame');
+            const frame = getActiveFrame();
+            const currentTab = getActiveTab();
+
+            if (!frame || !currentTab) return;
+
             const loadingHtml = '<div class="loading">Загрузка...</div>';
             frame.srcdoc = loadingHtml;
 
             try {
                 const content = await loadWebsite(url);
+                currentTab.url = url;
+                getActiveAddressBar().value = url;
+                
+                // Попытка извлечь заголовок
+                const match = content.match(/<title>(.*?)<\/title>/i);
+                currentTab.title = match ? match[1].trim() : url;
+                updateTabBar();
+
                 frame.srcdoc = content;
             } catch (error) {
-                frame.srcdoc = `
+                 frame.srcdoc = `
                     <div style="padding: 20px; text-align: center; color: #e74c3c;">
                         <h2>❌ Ошибка загрузки</h2>
                         <p>${error.message}</p>
@@ -189,16 +397,34 @@
             }
         }
 
-        
-        function refresh() {
-            if (history[currentHistoryIndex]) {
-                navigateTo(history[currentHistoryIndex]);
+        function goBack() {
+            const currentTab = getActiveTab();
+            if (currentTab && currentTab.historyIndex > 0) {
+                currentTab.historyIndex--;
+                const url = currentTab.history[currentTab.historyIndex];
+                loadFromHistory(url);
             }
         }
         
-        // Загружаем стартовую страницу
+        function goForward() {
+            const currentTab = getActiveTab();
+            if (currentTab && currentTab.historyIndex < currentTab.history.length - 1) {
+                currentTab.historyIndex++;
+                const url = currentTab.history[currentTab.historyIndex];
+                loadFromHistory(url);
+            }
+        }
+        
+        function refresh() {
+            const currentTab = getActiveTab();
+            if (currentTab && currentTab.history[currentTab.historyIndex]) {
+                navigateTo(currentTab.history[currentTab.historyIndex]);
+            }
+        }
+        
+        // Загружаем стартовую страницу при запуске
         window.onload = function() {
-            navigateTo('welcome.vs');
+            openNewTab('welcome.vs'); // Теперь это здесь
         };
     </script>
 </body>
