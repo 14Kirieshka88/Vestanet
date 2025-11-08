@@ -1,189 +1,136 @@
-// api.js — упрощённый API для "интернета в интернете"
-// Основная идея: вводим "<sitename>.vs" -> пытаемся загрузить /sites/<sitename>/start.html
-// Защита: разрешаем загружать только из /sites/<name>/
-// Интерфейс: vsBrowser.load(siteHost) -> Promise({ok, msg})
+// api.js — оригинальная концепция "Интернета в интернете"
+// Работает на GitHub Pages. Загружает сайты из /sites/<site>/start.html
+// Переход по .vs ссылкам (например <a href="titup.vs">) открывает соответствующий сайт.
+// Реальные сайты не открываются.
 
-export class VSBrowserAPI {
-  constructor(options = {}) {
-    // base path на GitHub Pages — просто корень сайта
-    this.sitesBase = options.sitesBase || '/sites';
-    // имя файла старта
-    this.startFile = options.startFile || 'start.html';
-    // iframe id куда вставляем контент
-    this.iframeId = options.iframeId || 'vs-content-frame';
-    // элемент статуса (опционально)
-    this.statusEl = options.statusEl || null;
-    // history
-    this.history = [];
-    this.historyIndex = -1;
+class VSBrowserAPI {
+  constructor() {
+    this.basePath = "./sites/";
+    this.currentSite = null;
+    this.frame = null;
   }
 
-  _setStatus(text) {
-    if (this.statusEl) this.statusEl.textContent = text;
-    else console.log('[VSBrowser status]', text);
-  }
-
-  // нормализует ввод: "gov.vs" -> "gov", также принимает "gov" или full path "/sites/gov/start.html"
-  extractSiteName(input) {
-    if (!input) return null;
-    input = input.trim();
-    // если ввели с доменом .vs
-    const vsMatch = input.match(/^([a-zA-Z0-9-_]+)\.vs$/);
-    if (vsMatch) return vsMatch[1];
-    // если ввели просто имя
-    if (/^[a-zA-Z0-9-_]+$/.test(input)) return input;
-    // если ввели путевой адрес типа /sites/gov/start.html -> извлечь gov
-    const pathMatch = input.match(/\/sites\/([a-zA-Z0-9-_]+)(\/|$)/);
-    if (pathMatch) return pathMatch[1];
-    return null;
-  }
-
-  // Возвращает URL для загрузки стартовой страницы сайта
-  getStartUrlForSite(siteName) {
-    return `${this.sitesBase}/${encodeURIComponent(siteName)}/${this.startFile}`;
-  }
-
-  // Проверяет, доступен ли start.html (HEAD или GET)
-  async checkSiteExists(siteName) {
-    const url = this.getStartUrlForSite(siteName);
-    try {
-      const resp = await fetch(url, { method: 'GET' });
-      if (!resp.ok) return { ok: false, code: resp.status, msg: `HTTP ${resp.status}` };
-      return { ok: true, url };
-    } catch (e) {
-      return { ok: false, msg: e.message };
+  init(iframeId) {
+    this.frame = document.getElementById(iframeId);
+    if (!this.frame) {
+      console.error("VSBrowserAPI: iframe not found:", iframeId);
+      return;
     }
+
+    // При загрузке сайта в iframe — обработаем ссылки
+    this.frame.addEventListener("load", () => {
+      this.handleLinks();
+    });
   }
 
-  // Загружает сайт в iframe. Возвращает Promise с объектом результата.
-  async load(siteInput, pushHistory = true) {
-    const siteName = this.extractSiteName(siteInput);
+  // Загружает сайт по имени или по адресу типа gov.vs
+  async load(siteName) {
+    if (!this.frame) return console.error("iframe not initialized");
+
+    siteName = this.cleanSiteName(siteName);
     if (!siteName) {
-      this._setStatus('Неверный адрес — введите, например, gov.vs');
-      return { ok: false, msg: 'invalid site name' };
+      this.showError("Введите адрес сайта, например gov.vs");
+      return;
     }
 
-    this._setStatus(`Проверяю сайт: ${siteName}...`);
-    const check = await this.checkSiteExists(siteName);
-    if (!check.ok) {
-      this._setStatus(`Сайт не найден: ${siteName} (${check.msg || check.code})`);
-      return { ok: false, msg: 'not found', detail: check };
-    }
-
-    const iframe = document.getElementById(this.iframeId);
-    if (!iframe) {
-      this._setStatus('Ошибка: iframe не найден.');
-      return { ok: false, msg: 'no iframe' };
-    }
-
-    // Устанавливаем src iframe на стартовую страницу
-    iframe.src = check.url;
-    this._setStatus('Загрузка...');
-
-    // Обновляем историю
-    if (pushHistory) {
-      // если мы не в конце — усекаем "вперёд"
-      if (this.historyIndex < this.history.length - 1) {
-        this.history = this.history.slice(0, this.historyIndex + 1);
-      }
-      this.history.push({ site: siteName, url: check.url });
-      this.historyIndex = this.history.length - 1;
-    }
-
-    // Подключим onload обработчик извне (в browser.html установим обработчик)
-    return { ok: true, url: check.url, site: siteName };
-  }
-
-  // Навигация по истории
-  async back() {
-    if (this.historyIndex <= 0) return { ok: false, msg: 'no back' };
-    this.historyIndex--;
-    const entry = this.history[this.historyIndex];
-    return this._navigateToHistoryEntry(entry);
-  }
-
-  async forward() {
-    if (this.historyIndex >= this.history.length - 1) return { ok: false, msg: 'no forward' };
-    this.historyIndex++;
-    const entry = this.history[this.historyIndex];
-    return this._navigateToHistoryEntry(entry);
-  }
-
-  async reload() {
-    if (this.historyIndex < 0) return { ok: false, msg: 'no current' };
-    const entry = this.history[this.historyIndex];
-    return this._navigateToHistoryEntry(entry, false);
-  }
-
-  _navigateToHistoryEntry(entry, pushHistory = false) {
-    const iframe = document.getElementById(this.iframeId);
-    if (!iframe) return { ok: false, msg: 'no iframe' };
-    iframe.src = entry.url;
-    this._setStatus(`Загрузка ${entry.site}...`);
-    return { ok: true, url: entry.url, site: entry.site };
-  }
-
-  // Ограничение: только ресурсы внутри /sites/<site> разрешаем открывать.
-  // Эта функция проверяет ссылку и возвращает true если безопасно.
-  isAllowedUrl(url, siteName) {
+    const url = `${this.basePath}${siteName}/start.html`;
     try {
-      const u = new URL(url, location.href);
-      // разрешаем только тот же origin и путь начинающийся на /sites/<siteName>/
-      if (u.origin !== location.origin) return false;
-      return u.pathname.startsWith(`${this.sitesBase}/${siteName}/`);
-    } catch (e) {
-      return false;
+      const res = await fetch(url, { method: "GET" });
+      if (!res.ok) throw new Error(`Сайт не найден (${res.status})`);
+      this.frame.src = url;
+      this.currentSite = siteName;
+    } catch (err) {
+      this.showError(`Ошибка загрузки сайта "${siteName}.vs"`);
+      console.error(err);
     }
   }
 
-  // Инжектим внутрь iframe обработчик ссылок и форм (только если same-origin)
-  // Вызывать в onload iframe. Если не доступно (cross-origin), ничего не меняем.
-  attachSandboxHandlers() {
-    const iframe = document.getElementById(this.iframeId);
-    if (!iframe) return;
+  // Очищает и нормализует имя сайта
+  cleanSiteName(name) {
+    if (!name) return null;
+    name = name.trim().toLowerCase();
+    if (name.endsWith(".vs")) name = name.slice(0, -3);
+    name = name.replace(/[^a-z0-9-_]/g, ""); // защита от мусора
+    return name || null;
+  }
+
+  // Показывает ошибку прямо в iframe
+  showError(text) {
+    if (!this.frame) return;
+    const html = `
+      <html>
+        <head>
+          <style>
+            body { font-family: sans-serif; background:#fafafa; color:#333; display:flex; align-items:center; justify-content:center; height:100vh; }
+            .box { text-align:center; border:1px solid #ddd; padding:20px; border-radius:8px; background:white; box-shadow:0 0 10px #0001; }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <h2>Ошибка</h2>
+            <p>${text}</p>
+            <p style="color:#888;font-size:0.9em;">Проверьте, существует ли папка сайта в /sites/</p>
+          </div>
+        </body>
+      </html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    this.frame.src = URL.createObjectURL(blob);
+  }
+
+  // Подключает обработчики ссылок внутри iframe
+  handleLinks() {
+    if (!this.frame || !this.frame.contentWindow) return;
+
+    let doc;
     try {
-      const win = iframe.contentWindow;
-      const doc = iframe.contentDocument;
-      if (!doc) return;
-      const currentEntry = this.history[this.historyIndex];
-      const siteName = currentEntry ? currentEntry.site : null;
+      doc = this.frame.contentDocument || this.frame.contentWindow.document;
+    } catch {
+      console.warn("Невозможно получить доступ к контенту iframe (возможно кросс-домен).");
+      return;
+    }
 
-      // Перехватываем ссылки
-      doc.querySelectorAll('a').forEach(a => {
-        a.addEventListener('click', (ev) => {
-          const href = a.getAttribute('href') || '';
-          // относительные ссылки нормально резолвятся
-          const resolved = new URL(href, win.location.href).href;
-          if (this.isAllowedUrl(resolved, siteName)) {
-            // загрузим новую страницу в iframe (pushHistory=true)
-            ev.preventDefault();
-            // вытянем siteName из нового пути (если ссылка ведёт внутри той же папки — остаёмся)
-            const match = resolved.match(new RegExp(`${this.sitesBase}/([a-zA-Z0-9-_]+)/`));
-            const newSite = match ? match[1] : siteName;
-            this.load(`${newSite}.vs`);
-          } else {
-            ev.preventDefault();
-            alert('Открытие внешних ресурсов запрещено в этом "интернетe".');
-          }
-        }, { passive: true });
-      });
+    if (!doc) return;
 
-      // Перехватываем формы — блокируем отправку за пределы allowed
-      doc.querySelectorAll('form').forEach(form => {
-        form.addEventListener('submit', (ev) => {
-          ev.preventDefault();
-          alert('Отправка форм заблокирована (симуляция).');
+    // ловим все <a> ссылки
+    const anchors = doc.querySelectorAll("a[href]");
+    anchors.forEach(a => {
+      const href = a.getAttribute("href");
+      if (!href) return;
+
+      if (href.endsWith(".vs")) {
+        // это переход на другой сайт .vs
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          const targetSite = this.cleanSiteName(href);
+          this.load(targetSite);
         });
-      });
+      } else if (/^https?:\/\//i.test(href)) {
+        // блокируем внешние сайты
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          alert("Внешние сайты запрещены в этом интернете 😎");
+        });
+      } else if (!href.startsWith("#")) {
+        // относительная ссылка внутри текущего сайта
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          if (!this.currentSite) return;
+          const newUrl = `${this.basePath}${this.currentSite}/${href}`;
+          this.frame.src = newUrl;
+        });
+      }
+    });
 
-      this._setStatus('Готово');
-    } catch (e) {
-      // cross-origin или ошибка доступа — ничего не делаем
-      console.warn('Не удалось инжектить обработчики в iframe (возможно cross-origin):', e);
-      this._setStatus('Загружено (без модификаций).');
-    }
+    // блокируем отправку форм (прикол)
+    const forms = doc.querySelectorAll("form");
+    forms.forEach(f => {
+      f.addEventListener("submit", (e) => {
+        e.preventDefault();
+        alert("Отправка форм недоступна в этом интернете 😅");
+      });
+    });
   }
 }
 
-// Удобная фабрика для создания API в browser.html:
-// window.vsBrowser = new VSBrowserAPI({ iframeId: 'vs-content-frame', statusEl: document.getElementById('vs-status') });
+// создаём глобальный экземпляр
+window.vsBrowser = new VSBrowserAPI();
