@@ -1,216 +1,294 @@
-// api.js — "Интернет в интернете" (исправленная версия)
-// 1) НЕ автозагружает никакие сайты (всё только по вызову load/init из внешнего кода).
-// 2) Поддерживает updomain / downdomain (настраиваемые наборы правил).
-// 3) Обрабатывает .vs-ссылки, относительные ссылки и блокирует внешние URL.
-// 4) API предоставляет методы для управления списками up/down domains.
+// api.js — исправленный. Поддержка:
+// - site.vs, site.vs/path
+// - downdomain.site.vs and downdomain.site.vs/updomain/...
+// - не блокирует формы (обрабатывает отправки внутри симуляции)
+// - перехватывает клики даже с target="_top"/"_blank" и загружает внутри iframe
 
 class VSBrowserAPI {
   constructor(options = {}) {
-    // Путь к папке с сайтами (можно задать при создании)
-    this.basePath = options.basePath || "/sites";
-    this.startFile = options.startFile || "start.html"; // файл по умолчанию внутри каждой папки
+    this.basePath = options.basePath || "/sites"; // /sites
+    this.startFile = options.startFile || "start.html";
     this.iframe = null;
-    this.currentSite = null;
-
-    // updomain/downdomain: массивы строк (напр. ['imagining','blog'])
-    this.updomainPaths = new Set(options.updomainPaths || []);   // те, что считаются "updomain"
-    this.downdomainPaths = new Set(options.downdomainPaths || []); // те, что "downdomain"
-
-    // Флаги (по умолчанию API молчит — не автозагружает)
-    this.autoLoadOnInit = !!options.autoLoadOnInit; // по умолчанию false
-
-    // Отладка
-    this.onStatus = typeof options.onStatus === "function" ? options.onStatus : (s) => console.log("[VSBrowser]", s);
+    this.currentSite = null;     // main site name (e.g. "site")
+    this.currentSub = null;      // downdomain if used (e.g. "downdomain")
+    this.onStatus = options.onStatus || ((s) => console.log("[VS]", s));
   }
 
-  // ---------------------------
-  // Инициализация: привязать iframe (не будет автозагружать)
-  // ---------------------------
   init(iframeId) {
-    const el = document.getElementById(iframeId);
-    if (!el) {
-      throw new Error(`VSBrowserAPI.init: iframe with id "${iframeId}" not found`);
-    }
-    this.iframe = el;
+    const frame = document.getElementById(iframeId);
+    if (!frame) throw new Error(`VSBrowserAPI.init: iframe ${iframeId} not found`);
+    this.iframe = frame;
 
-    // слушаем load для инъекции обработчиков
+    // При загрузке инжектим обработчики (если same-origin)
     this.iframe.addEventListener("load", () => {
       this.onStatus("iframe loaded");
       this._attachHandlersSafely();
     });
 
-    this.onStatus("VSBrowserAPI initialized (no auto-load).");
-    // ВАЖНО: API НЕ делает автоматическую загрузку стартовой страницы.
-    // Если нужно автозагрузить - это должен делать внешний код (browser.html).
+    this.onStatus("VSBrowserAPI initialized (API не автозагружает сайты).");
   }
 
-  // ---------------------------
-  // Управление updomain / downdomain
-  // ---------------------------
-  addUpdomain(name) { this.updomainPaths.add(String(name)); }
-  removeUpdomain(name) { this.updomainPaths.delete(String(name)); }
-  listUpdomain() { return Array.from(this.updomainPaths); }
-  isUpdomain(name) { return this.updomainPaths.has(String(name)); }
-
-  addDowndomain(name) { this.downdomainPaths.add(String(name)); }
-  removeDowndomain(name) { this.downdomainPaths.delete(String(name)); }
-  listDowndomain() { return Array.from(this.downdomainPaths); }
-  isDowndomain(name) { return this.downdomainPaths.has(String(name)); }
-
-  // ---------------------------
-  // Нормализация введённого адреса
-  // Примеры входа: "gov.vs", "gov", "/sites/gov/start.html"
-  // ---------------------------
-  _cleanSiteInput(input) {
-    if (!input) return null;
+  // ------------------------------
+  // Разбор адреса .vs
+  // Поддерживает:
+  //  - site.vs
+  //  - site.vs/path/to.html
+  //  - downdomain.site.vs
+  //  - downdomain.site.vs/updomain/...
+  // Возвращает {ok:true, site, sub, path}
+  // ------------------------------
+  _parseVsAddress(input) {
+    if (!input) return { ok: false };
     let s = String(input).trim();
-    // если указали полный путь /sites/name/... -> попытаться извлечь имя
-    const m = s.match(/\/sites\/([a-zA-Z0-9-_]+)(\/|$)/);
-    if (m) return m[1];
-    // если указали с доменом .vs
-    if (s.toLowerCase().endsWith(".vs")) s = s.slice(0, -3);
-    // если просто имя — оставляем, но фильтруем лишние символы
-    s = s.toLowerCase().replace(/[^a-z0-9-_]/g, "");
-    return s || null;
+
+    // если ввели с протоколом или слешами вначале — убираем
+    s = s.replace(/^https?:\/\//i, "");
+    s = s.replace(/^\/+/, "");
+
+    // если передали полный путь /sites/... -> свести к относительному
+    const sitesMatch = s.match(/^sites\/([a-z0-9-_]+)(?:\/(.*))?$/i);
+    if (sitesMatch) {
+      return { ok: true, site: sitesMatch[1].toLowerCase(), sub: null, path: sitesMatch[2] || "" };
+    }
+
+    // проверим формат: downdomain.site.vs[/path] или site.vs[/path]
+    const parts = s.split("/");
+    const host = parts.shift(); // host может быть 'a.b.vs' или 'site.vs' или 'site.vs:80'
+    const path = parts.join("/");
+
+    // убираем порт если есть
+    const hostNoPort = host.split(":")[0];
+
+    // host должен заканчиваться на .vs
+    if (!hostNoPort.toLowerCase().endsWith(".vs")) return { ok: false };
+
+    const hostCore = hostNoPort.slice(0, -3); // убираем .vs
+
+    // если есть точка — downdomain.site
+    const hostSegments = hostCore.split(".");
+    if (hostSegments.length === 1) {
+      return { ok: true, site: hostSegments[0].toLowerCase(), sub: null, path };
+    } else {
+      const sub = hostSegments.slice(0, -1).join(".").toLowerCase(); // всё что перед последним сегментом
+      const site = hostSegments[hostSegments.length - 1].toLowerCase();
+      return { ok: true, site, sub, path };
+    }
   }
 
-  // ---------------------------
-  // Получить URL стартовой страницы для сайта
-  // ---------------------------
-  getStartUrl(siteName) {
-    return `${this.basePath}/${encodeURIComponent(siteName)}/${this.startFile}`;
+  // ------------------------------
+  // Формирует URL на файловом хранилище /sites
+  // mapping rules:
+  //  - site, no sub, no path -> /sites/site/start.html
+  //  - site, path -> /sites/site/<path>
+  //  - sub.site, no path -> /sites/site/sub/start.html
+  //  - sub.site, path -> /sites/site/sub/<path>
+  // ------------------------------
+  _buildUrl(parsed) {
+    if (!parsed || !parsed.ok) return null;
+    const site = encodeURIComponent(parsed.site);
+    const sub = parsed.sub ? encodeURIComponent(parsed.sub) : null;
+    const path = (parsed.path || "").replace(/^\/+/, ""); // убираем ведущие слэши
+
+    if (sub) {
+      if (!path) return `${this.basePath}/${site}/${sub}/${this.startFile}`;
+      return `${this.basePath}/${site}/${sub}/${path}`;
+    } else {
+      if (!path) return `${this.basePath}/${site}/${this.startFile}`;
+      return `${this.basePath}/${site}/${path}`;
+    }
   }
 
-  // ---------------------------
-  // Проверить существование start.html (GET)
-  // ---------------------------
-  async siteExists(siteName) {
-    const url = this.getStartUrl(siteName);
+  // ------------------------------
+  // Проверка наличия ресурса (GET)
+  // ------------------------------
+  async _exists(url) {
     try {
-      const res = await fetch(url, { method: "GET" });
-      return { ok: res.ok, status: res.status, url };
+      const r = await fetch(url, { method: "GET" });
+      return { ok: r.ok, status: r.status };
     } catch (e) {
       return { ok: false, error: e.message };
     }
   }
 
-  // ---------------------------
-  // Загрузить сайт (НИЧЕГО не делает автоматически при init)
-  // siteInput может быть "gov", "gov.vs", или уже "gov/start.html"
-  // pushHistory — внешняя логика может вести историю (API не хранит историю автоматически)
-  // ---------------------------
-  async load(siteInput) {
-    if (!this.iframe) throw new Error("VSBrowserAPI: iframe not initialized. Call init(iframeId) first.");
-    const siteName = this._cleanSiteInput(siteInput);
-    if (!siteName) {
-      this.onStatus("VSBrowserAPI: неверное имя сайта.");
-      return { ok: false, msg: "invalid site name" };
+  // ------------------------------
+  // Основной метод загрузки: принимает любые формы, например:
+  //  - "site.vs", "site.vs/path", "downdomain.site.vs", "downdomain.site.vs/up"
+  // Возвращает {ok, url, parsed}
+  // ------------------------------
+  async load(address) {
+    if (!this.iframe) throw new Error("VSBrowserAPI: iframe not initialized");
+
+    const parsed = this._parseVsAddress(address);
+    if (!parsed.ok) {
+      this.onStatus("Неверный адрес (ожидается .vs)");
+      return { ok: false, msg: "invalid address" };
     }
 
-    const startUrl = this.getStartUrl(siteName);
-    // пробуем загрузить (проверка существования)
-    const check = await this.siteExists(siteName);
+    const url = this._buildUrl(parsed);
+    if (!url) return { ok: false, msg: "cannot build url" };
+
+    const check = await this._exists(url);
     if (!check.ok) {
-      this.onStatus(`VSBrowserAPI: сайт "${siteName}" не найден (${check.status || check.error})`);
+      this.onStatus(`Сайт/ресурс не найден: ${url} (${check.status || check.error})`);
       return { ok: false, msg: "not found", detail: check };
     }
 
-    this.currentSite = siteName;
-    this.iframe.src = startUrl;
-    this.onStatus(`VSBrowserAPI: загружаю ${siteName} -> ${startUrl}`);
-    return { ok: true, site: siteName, url: startUrl };
+    // всё ок — загрузим в iframe
+    this.currentSite = parsed.site;
+    this.currentSub = parsed.sub || null;
+    this.iframe.src = url;
+    this.onStatus(`Загружаю: ${url}`);
+    return { ok: true, url, parsed };
   }
 
-  // ---------------------------
-  // Разрешённые URL: только те, что внутри this.basePath/<site>/
-  // и same-origin. Блокируем внешние https:// ссылки.
-  // ---------------------------
-  _isAllowedResourceUrl(url, siteName) {
+  // ------------------------------
+  // Разрешённые ресурсы: только те, что находятся внутри /sites/<site>/...
+  // ------------------------------
+  _isAllowedResource(url) {
     try {
       const u = new URL(url, location.href);
       if (u.origin !== location.origin) return false;
-      const expectedPrefix = `${this.basePath}/${siteName}/`.replace(/\/+/g, "/");
-      return u.pathname.startsWith(expectedPrefix);
+      const expected = `${this.basePath}/${this.currentSite}/`.replace(/\/+/g, "/");
+      return u.pathname.startsWith(expected);
     } catch (e) {
       return false;
     }
   }
 
-  // ---------------------------
-  // Инъекция обработчиков внутрь iframe (при доступе same-origin)
-  //  - обрабатываем <a href="something.vs">  -> load соответствующего сайта
-  //  - блокируем внешние ссылки (https://)
-  //  - относительные ссылки (page2.html) резолвим относительно currentSite
-  //  - блокируем формы (по приколу)
-  // ---------------------------
+  // ------------------------------
+  // Инъекция обработчиков внутрь iframe (если same-origin)
+  // Перехватываем:
+  //  - клики по <a href="..."> — включая href вида titup.vs и downdomain.site.vs/up
+  //  - формы: разрешаем отправку внутри симуляции; если action ведёт в .vs или относительный — обрабатываем и показываем результат в iframe
+  //  - предотвращаем уход за пределы (https:// и другие origin)
+  // ------------------------------
   _attachHandlersSafely() {
     if (!this.iframe) return;
     let doc;
     try {
       doc = this.iframe.contentDocument || this.iframe.contentWindow.document;
     } catch (e) {
-      // cross-origin — ничего не делаем, но это ожидаемо если iframe загружен с другого origin
-      this.onStatus("VSBrowserAPI: нет доступа к документу iframe (возможен cross-origin) — обработчики не подключены.");
+      this.onStatus("Нет доступа к документу iframe (cross-origin) — обработчики не подключены.");
       return;
     }
     if (!doc) return;
 
-    // Удобная внутренняя функция обработчика добавления
-    const addAnchorHandler = (a) => {
-      const href = a.getAttribute("href") || "";
-      // Если ссылка ведёт на .vs (пример: titup.vs)
-      if (/^[a-zA-Z0-9-_]+\.vs$/.test(href)) {
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
-          const target = this._cleanSiteInput(href);
-          // Перекладываем управление на внешний код: вызываем load и возвращаем результат
-          this.load(target);
-        });
+    // Перехват кликов: используем capture + passive=false, чтобы перехватить даже target=_top/_blank
+    const onClick = (ev) => {
+      // найти ближайший элемент a
+      let el = ev.target;
+      while (el && el !== doc && el.nodeName !== "A") el = el.parentElement;
+      if (!el || el.nodeName !== "A") return;
+      const href = el.getAttribute("href") || "";
+      if (!href) return;
+
+      // если anchor указывает якорь — позволим (можно прокрутить)
+      if (href.startsWith("#")) return;
+
+      // если .vs адрес (например titup.vs или a.b.site.vs/...), парсим и загружаем через API
+      const parsed = this._parseVsAddress(href);
+      if (parsed.ok) {
+        ev.preventDefault();
+        // загрузка через API (это обновит iframe.src)
+        this.load(href);
         return;
       }
 
-      // Если внешняя абсолютная ссылка -> блокируем
+      // если абсолютный http(s) — блокируем (вне симуляции)
       if (/^https?:\/\//i.test(href)) {
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
-          alert("Открытие внешних сайтов запрещено в этом симулированном интернете.");
-        });
+        ev.preventDefault();
+        alert("Внешние сайты запрещены в этом симуляторе интернета.");
         return;
       }
 
-      // Если относительная ссылка (не якорь) -> открываем внутри текущего сайта
-      if (href && !href.startsWith("#") && !/^[a-zA-Z0-9-_]+:\/\//.test(href)) {
-        a.addEventListener("click", (e) => {
-          e.preventDefault();
-          if (!this.currentSite) return;
-          const newUrl = `${this.basePath}/${this.currentSite}/${href}`.replace(/\/+/g, "/");
-          // проверяем, что ресурс внутри текущего сайта
-          if (this._isAllowedResourceUrl(newUrl, this.currentSite)) {
-            this.iframe.src = newUrl;
-            this.onStatus(`VSBrowserAPI: загружаю ресурс внутри сайта: ${newUrl}`);
-          } else {
-            alert("Ресурс за пределами сайта заблокирован.");
-          }
-        });
+      // относительная ссылка (в пределах текущего сайта)
+      // собираем полный url и проверяем разрешение
+      try {
+        const full = new URL(href, this.iframe.contentWindow.location.href).href;
+        if (this._isAllowedResource(full)) {
+          ev.preventDefault();
+          // просто установим iframe.src на этот ресурс
+          this.iframe.src = full;
+          this.onStatus(`Загрузка ресурса внутри сайта: ${full}`);
+          return;
+        } else {
+          ev.preventDefault();
+          alert("Доступ к этому ресурсу запрещён (вне текущего сайта).");
+          return;
+        }
+      } catch (e) {
+        // оставим переход по умолчанию если что-то неожиданное
       }
     };
 
-    // подключаем для всех ссылок, в т.ч. динамически созданных
-    const anchors = Array.from(doc.querySelectorAll("a[href]"));
-    anchors.forEach(addAnchorHandler);
+    // Добавляем обработчик на корневой документ (capture чтобы перехватить target specifics)
+    doc.addEventListener("click", onClick, true);
 
-    // блокируем формы (симуляция)
-    const forms = Array.from(doc.querySelectorAll("form"));
-    forms.forEach(f => {
-      f.addEventListener("submit", (e) => {
-        e.preventDefault();
-        alert("Отправка форм отключена в этом симуляторе интернета.");
-      });
-    });
+    // Формы: разрешаем отправку, но если action ведёт наружу — блокируем; если action относителен или .vs — будем обрабатывать.
+    const onSubmit = (ev) => {
+      const form = ev.target;
+      if (!form || form.nodeName !== "FORM") return;
+      const actionRaw = form.getAttribute("action") || "";
+      const method = (form.getAttribute("method") || "GET").toUpperCase();
 
-    this.onStatus("VSBrowserAPI: обработчики ссылок/форм подключены.");
+      // Разрешаем чисто внутри-страничные формы без action (они могут быть handled by JS)
+      if (!actionRaw || actionRaw === "") {
+        // позволяем (внутренний JS обработает)
+        return;
+      }
+
+      // Если действие ведёт на .vs -> перехватим и загрузим результат как URL (полезно для поисков)
+      const parsed = this._parseVsAddress(actionRaw);
+      if (parsed.ok) {
+        ev.preventDefault();
+        // для GET собираем query строки из полей
+        if (method === "GET") {
+          const params = new URLSearchParams(new FormData(form)).toString();
+          const base = this._buildUrl(parsed);
+          const targetUrl = params ? `${base}${base.includes("?") ? "&" : "?"}${params}` : base;
+          this.iframe.src = targetUrl;
+          this.onStatus(`Форма => загрузка ${targetUrl}`);
+        } else {
+          // POST: соберём и отправим через fetch, затем вставим ответ в iframe через blob
+          const formData = new FormData(form);
+          const body = new URLSearchParams();
+          for (const [k, v] of formData.entries()) body.append(k, v);
+          const url = this._buildUrl(parsed);
+          fetch(url, { method: "POST", body })
+            .then(r => r.text())
+            .then(html => {
+              const blob = new Blob([html], { type: "text/html" });
+              this.iframe.src = URL.createObjectURL(blob);
+              this.onStatus("Форма POST -> ответ загружен в iframe (симуляция).");
+            })
+            .catch(err => {
+              alert("Ошибка при отправке формы (симуляция): " + err);
+            });
+        }
+        return;
+      }
+
+      // Если action абсолютный наружу -> блокируем
+      if (/^https?:\/\//i.test(actionRaw)) {
+        ev.preventDefault();
+        alert("Отправка форм на внешние сайты запрещена.");
+        return;
+      }
+
+      // Иначе позволим форме отправиться (если это относительный путь внутри сайта, браузер сам загрузит его в iframe)
+      // НО нужно предотвратить target=_top/_blank у форм — если есть target, очистим его чтобы не выйти из iframe
+      if (form.target && form.target !== "" && form.target !== "_self") {
+        form.target = "_self";
+      }
+      // (не предотвращаем)
+    };
+
+    // Вешаем обработчики на весь документ
+    doc.addEventListener("submit", onSubmit, true);
+
+    this.onStatus("Обработчики ссылок/форм подключены (внутри iframe).");
   }
 }
 
-// Экспортируем глобальный экземпляр — внешняя страница использует window.vsBrowser
+// экспорт глобального экземпляра
 window.vsBrowser = new VSBrowserAPI();
