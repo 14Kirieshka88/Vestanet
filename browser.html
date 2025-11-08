@@ -70,42 +70,50 @@
 
   <iframe id="browser-frame" src="about:blank"></iframe>
 
-  <div id="status">Vestanet: готов.</div>
+  <div id="status">Vestanet готов.</div>
 
   <script src="api.js"></script>
   <script>
-    // инициализация браузера
-    vsBrowser.onStatus = (msg) => {
-      document.getElementById("status").textContent = msg;
+    const iframe = document.getElementById("browser-frame");
+    const addressInput = document.getElementById("address");
+    const status = document.getElementById("status");
+
+    // глобальная функция для переходов из iframe
+    window.navigateTo = async function(url) {
+      try {
+        status.textContent = "Загрузка " + url + "...";
+        const content = await vsBrowser.loadWebsite(url);
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(content);
+        doc.close();
+        addressInput.value = url.endsWith(".vs") ? url : url + ".vs";
+        status.textContent = "Открыт сайт: " + url;
+      } catch (err) {
+        status.textContent = "Ошибка: сайт не найден";
+        console.error(err);
+        const doc = iframe.contentDocument || iframe.contentWindow.document;
+        doc.open();
+        doc.write(`<h1 style="font-family:sans-serif;color:#900;">Ошибка: сайт не найден</h1><p>${url}</p>`);
+        doc.close();
+      }
     };
 
-    vsBrowser.init("browser-frame");
-
-    const addressInput = document.getElementById("address");
-    const goBtn = document.getElementById("go-btn");
-
-    async function openSite(name) {
-      const addr = name.trim();
-      if (!addr) return;
-      const result = await vsBrowser.load(addr);
-      if (result.ok) {
-        addressInput.value = addr.endsWith(".vs") ? addr : addr + ".vs";
-      } else {
-        addressInput.value = addr;
-        alert("Сайт не найден или недоступен: " + addr);
-      }
-    }
-
-    goBtn.addEventListener("click", () => openSite(addressInput.value));
-    addressInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") openSite(addressInput.value);
+    // Кнопка "Перейти"
+    document.getElementById("go-btn").addEventListener("click", () => {
+      navigateTo(addressInput.value.trim());
     });
 
-    // Автозагрузка welcome.vs при первом открытии браузера
+    // Enter в адресной строке
+    addressInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") navigateTo(addressInput.value.trim());
+    });
+
+    // Автозагрузка welcome.vs
     window.addEventListener("DOMContentLoaded", () => {
       const defaultSite = "welcome.vs";
       addressInput.value = defaultSite;
-      openSite(defaultSite);
+      navigateTo(defaultSite);
     });
   </script>
 </body>
