@@ -9,8 +9,11 @@ class VSBrowserAPI {
         try {
             console.log('Loading URL:', url);
             
-            this.currentDomain = this.extractDomain(url);
-            let sitePath = this.resolveUrlPath(url);
+            // НОВОЕ: Преобразуем всю часть URL, связанную с доменом, в нижний регистр для корректной обработки
+            const lowercasedUrl = url.toLowerCase();
+            
+            this.currentDomain = this.extractDomain(lowercasedUrl);
+            let sitePath = this.resolveUrlPath(lowercasedUrl);
             const fullPath = this.sitesBaseUrl + sitePath;
             
             console.log('Resolved path:', fullPath);
@@ -21,7 +24,7 @@ class VSBrowserAPI {
             }
             
             let content = await response.text();
-            content = this.processHtmlContent(content, url);
+            content = this.processHtmlContent(content, lowercasedUrl);
             
             return content;
         } catch (error) {
@@ -39,48 +42,40 @@ class VSBrowserAPI {
     
     resolveUrlPath(url) {
         const urlParts = url.split('/');
-        const domain = urlParts[0];
-        const path = urlParts.slice(1).join('/'); // Путь после домена (например: example.html или folder/page.html)
+        const domain = urlParts[0]; 
+        const path = urlParts.slice(1).join('/'); 
 
-        // 1. Обработка поддоменов (например: my.site.vs или my.site.vs/page.html)
+        // 1. Обработка поддоменов
         if (this.isSubdomain(domain)) {
             const domainParts = domain.split('.');
             const subdomain = domainParts[0];
             const mainDomain = domainParts[1];
             
             if (path) {
-                // Если есть путь: site/subdomain.downdomain/path
                 return `${mainDomain}/${subdomain}.downdomain/${path}`;
             } else {
-                // Если пути нет: site/subdomain.downdomain/start.html
                 return `${mainDomain}/${subdomain}.downdomain/start.html`;
             }
         }
         
-        // 2. Обработка обычных доменов и путей (например: site.vs/updomain или site.vs/page.html)
+        // 2. Обработка обычных доменов и путей
         
         const siteName = domain.replace('.vs', '');
 
         if (path) {
-            // Проверяем, является ли первый элемент пути .updomain папкой
             const firstPath = urlParts[1];
             if (this.isUpdomainPath(siteName, firstPath)) {
-                // Если это updomain, то всегда идет на start.html в папке .updomain
                 return `${siteName}/${firstPath}.updomain/start.html`;
             }
             
-            // Обычные пути
             if (path.includes('.') && !path.endsWith('/')) {
-                // Путь к файлу (например: site.vs/page.html)
                 return `${siteName}/${path}`;
             } else {
-                // Путь к папке (например: site.vs/folder)
                 const cleanPath = path.endsWith('/') ? path.slice(0, -1) : path;
                 return `${siteName}/${cleanPath}/start.html`;
             }
         }
         
-        // Простой домен типа site.vs
         return `${siteName}/start.html`;
     }
     
@@ -90,7 +85,6 @@ class VSBrowserAPI {
     }
     
     isUpdomainPath(siteName, path) {
-        // Для демо просто проверяем по известным путям
         const updomainPaths = ['imagining', 'blog', 'shop', 'none']; 
         return updomainPaths.includes(path);
     }
@@ -157,8 +151,6 @@ class VSBrowserAPI {
         if (baseParts.length > 1) {
             const lastPart = baseParts[baseParts.length - 1];
             
-            // Если последний сегмент содержит точку, и это не домен, значит, это имя файла.
-            // Удаляем его, чтобы получить путь к папке.
             if (lastPart.includes('.') && lastPart !== baseParts[0]) {
                 baseParts.pop(); 
             }
@@ -166,7 +158,6 @@ class VSBrowserAPI {
         
         for (const part of relativeParts) {
             if (part === '..') {
-                // Запрещаем переход выше домена
                 if (baseParts.length > 1) baseParts.pop(); 
             } else if (part !== '.') {
                 baseParts.push(part);
@@ -180,7 +171,6 @@ class VSBrowserAPI {
         const domain = url.split('/')[0];
         const siteName = domain.replace('.vs', '');
         
-        // Для .updomain путей нужно определить базовый путь
         if (url.includes('/')) {
             const pathParts = url.split('/');
             const firstPath = pathParts[1];
