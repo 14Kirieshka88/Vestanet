@@ -9,18 +9,8 @@ class VSBrowserAPI {
         try {
             console.log('Loading URL:', url);
             
-            if (url.startsWith('searchit.vs/search/')) {
-                return await this.handleSearchRequest(url);
-            }
-            
-            let mainUrl = url;
-            let hash = '';
-            if (url.includes('#')) {
-                [mainUrl, hash] = url.split('#');
-            }
-            
-            this.currentDomain = this.extractDomain(mainUrl);
-            let sitePath = this.resolveUrlPath(mainUrl);
+            this.currentDomain = this.extractDomain(url);
+            let sitePath = this.resolveUrlPath(url);
             const fullPath = this.sitesBaseUrl + sitePath;
             
             console.log('Resolved path:', fullPath);
@@ -31,7 +21,7 @@ class VSBrowserAPI {
             }
             
             let content = await response.text();
-            content = this.processHtmlContent(content, mainUrl, hash);
+            content = this.processHtmlContent(content, url);
             
             return content;
         } catch (error) {
@@ -39,124 +29,63 @@ class VSBrowserAPI {
             throw error;
         }
     }
-
-    // Сканируем папку sites на наличие сайтов
-    async getAllSites() {
-        const sites = [];
-        const verifiedSites = await this.getVerifiedSites();
-        
-        // Пробуем найти все папки в sites
-        const possibleFolders = await this.scanSitesFolder();
-        
-        for (const folder of possibleFolders) {
-            const siteName = `${folder}.vs`;
-            sites.push({
-                name: siteName,
-                verified: verifiedSites.includes(siteName)
-            });
+    
+    extractDomain(url) {
+        if (url.includes('/')) {
+            return url.split('/')[0];
         }
-        
-        return sites;
-    }
-
-    // Сканируем папку sites
-    async scanSitesFolder() {
-        const folders = [];
-        
-        // Пробуем проверить существование основных папок
-        const testFolders = ['mail', 'goverment', 'welcome', 'searchit', 'admin'];
-        
-        for (const folder of testFolders) {
-            try {
-                const response = await fetch(`${this.sitesBaseUrl}${folder}/start.html`);
-                if (response.ok) {
-                    folders.push(folder);
-                }
-            } catch (error) {
-                // Папка не существует
-            }
-        }
-        
-        return folders;
-    }
-
-    async handleSearchRequest(url) {
-        const searchQuery = decodeURIComponent(url.replace('searchit.vs/search/', ''));
-        const allSites = await this.getAllSites();
-        
-        // Ищем совпадения
-        const results = allSites.filter(site => {
-            const siteName = site.name.replace('.vs', '').toLowerCase();
-            const query = searchQuery.toLowerCase();
-            return siteName.includes(query);
-        });
-        
-        return this.generateSearchResults(searchQuery, results);
+        return url;
     }
     
-    generateSearchResults(query, results) {
-        return `
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Результаты - SearchIt.vs</title>
-    <style>
-        body { margin: 20px; font-family: Arial; }
-        .header { margin-bottom: 20px; }
-        input { width: 500px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-        button { padding: 8px 16px; border: 1px solid #f8f9fa; background: #f8f9fa; cursor: pointer; }
-        .result { margin: 15px 0; }
-        .result a { color: #1a0dab; text-decoration: none; font-size: 18px; }
-        .result a:hover { text-decoration: underline; }
-        .url { color: #006621; font-size: 14px; }
-        .verified { color: #27ae60; font-size: 12px; margin-left: 5px; }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <a href="../start.html" style="color: #1a0dab; text-decoration: none;">🔍 SearchIt.vs</a>
-        <form onsubmit="handleSearch(event)" style="margin-top: 10px;">
-            <input type="text" id="search" value="${query}" placeholder="Введите запрос">
-            <button type="submit">Поиск</button>
-        </form>
-    </div>
-
-    <div id="results">
-        ${results.length > 0 ? 
-            results.map(site => `
-                <div class="result">
-                    <a href="javascript:void(0)" onclick="goTo('${site.name}')">${site.name}</a>
-                    ${site.verified ? '<span class="verified">✓</span>' : ''}
-                    <div class="url">${site.name}</div>
-                </div>
-            `).join('') : 
-            `<p>По запросу "${query}" ничего не найдено</p>`
+    resolveUrlPath(url) {
+        // Обработка поддоменов типа my.site.vs (через .downdomain)
+        if (this.isSubdomain(url)) {
+            const parts = url.split('.');
+            const subdomain = parts[0];
+            const mainDomain = parts[1];
+            return `${mainDomain}/${subdomain}.downdomain/start.html`;
         }
-    </div>
-
-    <script>
-        function handleSearch(event) {
-            event.preventDefault();
-            const query = document.getElementById('search').value.trim();
-            if (query) {
-                if (window.parent && window.parent.navigateTo) {
-                    window.parent.navigateTo('searchit.vs/search/' + encodeURIComponent(query));
-                }
+        
+        // Обработка путей типа site.vs/updomain (через .updomain)
+        if (url.includes('/')) {
+            const [domain, ...pathParts] = url.split('/');
+            const siteName = domain.replace('.vs', '');
+            const path = pathParts.join('/');
+            
+            // Проверяем, является ли первый элемент пути .updomain папкой
+            const firstPath = pathParts[0];
+            if (firstPath && this.isUpdomainPath(siteName, firstPath)) {
+                return `${siteName}/${firstPath}.updomain/start.html`;
+            }
+            
+            // Обычные пути
+            if (path.includes('.') && !path.endsWith('/')) {
+                return `${siteName}/${path}`;
+            } else {
+                const cleanPath = path.endsWith('/') ? path.slice(0, -1) : path;
+                return `${siteName}/${cleanPath}/start.html`;
             }
         }
-
-        function goTo(site) {
-            if (window.parent && window.parent.navigateTo) {
-                window.parent.navigateTo(site);
-            }
-        }
-    </script>
-</body>
-</html>`;
+        
+        // Простой домен типа site.vs
+        const siteName = url.replace('.vs', '');
+        return `${siteName}/start.html`;
     }
-
-    // Остальные методы без изменений
-    processHtmlContent(content, baseUrl, hash) {
+    
+    isSubdomain(url) {
+        const parts = url.split('.');
+        return parts.length > 2 && parts[parts.length - 1] === 'vs';
+    }
+    
+    isUpdomainPath(siteName, path) {
+        // Проверяем существует ли папка path.updomain
+        // В реальной реализации здесь была бы проверка файловой системы
+        // Для демо просто проверяем по известным путям
+        const updomainPaths = ['imagining', 'blog', 'shop']; // примеры
+        return updomainPaths.includes(path);
+    }
+    
+    processHtmlContent(content, baseUrl) {
         const basePath = this.getBasePath(baseUrl);
         const baseTag = `<base href="${basePath}">`;
         
@@ -168,10 +97,6 @@ class VSBrowserAPI {
             content = `<head>${baseTag}</head>` + content;
         }
         
-        content = content.replace(/href="#([^"]*)"/gi, (match, anchor) => {
-            return `href="javascript:void(0)" onclick="VSHandleAnchor('${anchor}')"`;
-        });
-        
         content = content.replace(/href="([^"]*)"/gi, (match, href) => {
             return this.processHref(href, baseUrl, match);
         });
@@ -180,98 +105,9 @@ class VSBrowserAPI {
             return this.processAction(action, baseUrl, match);
         });
         
-        content = this.injectNavigationScripts(content, baseUrl, hash);
+        content = this.injectNavigationScripts(content, baseUrl);
         
         return content;
-    }
-    
-    injectNavigationScripts(content, baseUrl, hash) {
-        const scripts = `
-            <script>
-                function VSNavigate(url) {
-                    if (url.startsWith('http') && !url.includes('.vs')) {
-                        window.open(url, '_blank');
-                    } else {
-                        window.parent.navigateTo(url);
-                    }
-                }
-                
-                function VSHandleForm(form, actionUrl) {
-                    VSNavigate(actionUrl);
-                    return false;
-                }
-                
-                function VSHandleAnchor(anchor) {
-                    const element = document.getElementById(anchor);
-                    if (element) {
-                        element.scrollIntoView({ behavior: 'smooth' });
-                    }
-                }
-                
-                window.addEventListener('load', function() {
-                    ${hash ? `
-                    const anchorElement = document.getElementById('${hash}');
-                    if (anchorElement) {
-                        anchorElement.scrollIntoView({ behavior: 'smooth' });
-                    }
-                    ` : ''}
-                });
-            </script>
-        `;
-        
-        if (content.includes('</body>')) {
-            content = content.replace('</body>', `${scripts}</body>`);
-        } else {
-            content += scripts;
-        }
-        
-        return content;
-    }
-    
-    extractDomain(url) {
-        if (url.includes('/')) {
-            return url.split('/')[0];
-        }
-        return url;
-    }
-    
-    resolveUrlPath(url) {
-        if (this.isSubdomain(url)) {
-            const parts = url.split('.');
-            const subdomain = parts[0];
-            const mainDomain = parts[1];
-            return `${mainDomain}/${subdomain}.downdomain/start.html`;
-        }
-        
-        if (url.includes('/')) {
-            const [domain, ...pathParts] = url.split('/');
-            const siteName = domain.replace('.vs', '');
-            const path = pathParts.join('/');
-            
-            if (this.isUpdomainInDowndomain(siteName, pathParts[0])) {
-                return `${siteName}/${pathParts[0]}.downdomain/${pathParts.slice(1).join('/')}/start.html`;
-            }
-            
-            if (path.includes('.') && !path.endsWith('/')) {
-                return `${siteName}/${path}`;
-            } else {
-                const cleanPath = path.endsWith('/') ? path.slice(0, -1) : path;
-                return `${siteName}/${cleanPath}/start.html`;
-            }
-        }
-        
-        const siteName = url.replace('.vs', '');
-        return `${siteName}/start.html`;
-    }
-    
-    isSubdomain(url) {
-        const parts = url.split('.');
-        return parts.length > 2 && parts[parts.length - 1] === 'vs';
-    }
-    
-    isUpdomainInDowndomain(siteName, path) {
-        const possibleDowndomains = ['imagining', 'blog', 'admin'];
-        return possibleDowndomains.includes(path);
     }
     
     processHref(href, baseUrl, originalMatch) {
@@ -326,7 +162,58 @@ class VSBrowserAPI {
     getBasePath(url) {
         const domain = url.split('/')[0];
         const siteName = domain.replace('.vs', '');
+        
+        // Для .updomain путей нужно определить базовый путь
+        if (url.includes('/')) {
+            const pathParts = url.split('/');
+            const firstPath = pathParts[1];
+            if (this.isUpdomainPath(siteName, firstPath)) {
+                return `./sites/${siteName}/${firstPath}.updomain/`;
+            }
+        }
+        
         return `./sites/${siteName}/`;
+    }
+    
+    injectNavigationScripts(content, baseUrl) {
+        const scripts = `
+            <script>
+                function VSNavigate(url) {
+                    if (url.startsWith('http')) {
+                        window.open(url, '_blank');
+                    } else {
+                        window.parent.navigateTo(url);
+                    }
+                }
+                
+                function VSHandleForm(form, actionUrl) {
+                    console.log('Form submitted to:', actionUrl, form);
+                    VSNavigate(actionUrl);
+                    return false;
+                }
+                
+                const originalLocation = window.location;
+                Object.defineProperty(window, 'location', {
+                    get: function() {
+                        return {
+                            href: '${baseUrl}',
+                            assign: function(url) { VSNavigate(url); },
+                            replace: function(url) { VSNavigate(url); },
+                            reload: function() { window.parent.navigateTo('${baseUrl}'); }
+                        };
+                    },
+                    set: function(url) { VSNavigate(url); }
+                });
+            </script>
+        `;
+        
+        if (content.includes('</body>')) {
+            content = content.replace('</body>', `${scripts}</body>`);
+        } else {
+            content += scripts;
+        }
+        
+        return content;
     }
     
     async getVerifiedSites() {
