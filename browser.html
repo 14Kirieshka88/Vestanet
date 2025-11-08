@@ -1,142 +1,112 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Виртуальный браузер .vs</title>
-  <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin:0; height:100vh; display:flex; flex-direction:column; }
-    .toolbar { display:flex; gap:8px; padding:8px; align-items:center; background:#f3f4f6; border-bottom:1px solid #ddd; }
-    .controls { display:flex; gap:6px; align-items:center; }
-    button { padding:6px 10px; border-radius:6px; border:1px solid #ccc; background:white; cursor:pointer; }
-    input.address { flex:1; padding:8px; border-radius:6px; border:1px solid #ccc; }
-    #vs-status { margin-left:12px; color:#666; font-size:0.9rem; }
-    .content { flex:1; display:flex; }
-    iframe#vs-content-frame { width:100%; border:0; height:100%; }
-    .left { padding:8px; width:240px; border-right:1px solid #eee; background:#fbfbfb; }
-    .sites-list { list-style:none; padding:0; margin:0; }
-    .sites-list li { padding:6px 4px; cursor:pointer; border-radius:4px; }
-    .sites-list li:hover { background:#eee; }
-    .footer { padding:6px 8px; font-size:0.85rem; color:#777; border-top:1px solid #eee; background:#fafafa; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vestanet Browser</title>
+<style>
+  body {
+    margin: 0;
+    background: #eaeaea;
+    color: #222;
+    font-family: system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  #toolbar {
+    background: #f6f6f6;
+    border-bottom: 1px solid #ccc;
+    display: flex;
+    align-items: center;
+    padding: 6px;
+    gap: 6px;
+  }
+
+  #address {
+    flex: 1;
+    padding: 6px 8px;
+    border: 1px solid #aaa;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+
+  #go-btn {
+    padding: 6px 12px;
+    font-size: 14px;
+    border: none;
+    background: #0078d7;
+    color: white;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  #go-btn:hover {
+    background: #0063b1;
+  }
+
+  #browser-frame {
+    flex: 1;
+    width: 100%;
+    border: none;
+    background: white;
+  }
+
+  #status {
+    font-size: 12px;
+    background: #f1f1f1;
+    color: #555;
+    border-top: 1px solid #ccc;
+    padding: 4px 8px;
+  }
+</style>
 </head>
 <body>
-  <div class="toolbar">
-    <div class="controls">
-      <button id="btn-back" title="Назад">←</button>
-      <button id="btn-forward" title="Вперёд">→</button>
-      <button id="btn-reload" title="Обновить">⟲</button>
-    </div>
-
-    <input id="address" class="address" placeholder="Введите, например: gov.vs или название сайта (gov)" />
-    <button id="btn-go">Открыть</button>
-
-    <div id="vs-status">Готов</div>
+  <div id="toolbar">
+    <input id="address" type="text" placeholder="Введите адрес сайта (например, gov.vs)">
+    <button id="go-btn">Перейти</button>
   </div>
 
-  <div class="content">
-    <div class="left">
-      <h4>Локальные сайты (папка /sites)</h4>
-      <p style="font-size:0.9rem;color:#555">Добавь папку в /sites с файлом <code>start.html</code>. Открой — <code>имя</code>.vs</p>
-      <ul id="sites" class="sites-list"></ul>
-      <div class="footer">Только сайты из /sites разрешены.</div>
-    </div>
+  <iframe id="browser-frame" src="about:blank"></iframe>
 
-    <iframe id="vs-content-frame" sandbox="allow-scripts allow-same-origin"></iframe>
-  </div>
+  <div id="status">Vestanet: готов.</div>
 
-  <script type="module">
-    import { VSBrowserAPI } from './api.js';
+  <script src="api.js"></script>
+  <script>
+    // инициализация браузера
+    vsBrowser.onStatus = (msg) => {
+      document.getElementById("status").textContent = msg;
+    };
 
-    const statusEl = document.getElementById('vs-status');
-    const vsBrowser = new VSBrowserAPI({ iframeId: 'vs-content-frame', statusEl });
+    vsBrowser.init("browser-frame");
 
-    // UI элементы
-    const address = document.getElementById('address');
-    const btnGo = document.getElementById('btn-go');
-    const btnBack = document.getElementById('btn-back');
-    const btnForward = document.getElementById('btn-forward');
-    const btnReload = document.getElementById('btn-reload');
-    const sitesList = document.getElementById('sites');
-    const iframe = document.getElementById('vs-content-frame');
+    const addressInput = document.getElementById("address");
+    const goBtn = document.getElementById("go-btn");
 
-    // Попробуем подгрузить примерный список сайтов — но его может не быть.
-    // Вместо манифеста просто показываем подсказку; всё равно загрузка делается по вводу.
-    function renderHintSites() {
-      sitesList.innerHTML = '';
-      const hint = ['gov','blog','shop','demo']; // просто подсказки
-      hint.forEach(name => {
-        const li = document.createElement('li');
-        li.textContent = name + '.vs';
-        li.addEventListener('click', () => {
-          address.value = name + '.vs';
-          openAddress();
-        });
-        sitesList.appendChild(li);
-      });
-    }
-    renderHintSites();
-
-    async function openAddress() {
-      const val = address.value.trim();
-      if (!val) { statusEl.textContent = 'Введите имя сайта (например gov.vs)'; return; }
-      const res = await vsBrowser.load(val, true);
-      if (res.ok) {
-        address.value = `${res.site}.vs`;
+    async function openSite(name) {
+      const addr = name.trim();
+      if (!addr) return;
+      const result = await vsBrowser.load(addr);
+      if (result.ok) {
+        addressInput.value = addr.endsWith(".vs") ? addr : addr + ".vs";
+      } else {
+        addressInput.value = addr;
+        alert("Сайт не найден или недоступен: " + addr);
       }
     }
 
-    btnGo.addEventListener('click', openAddress);
-    address.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') openAddress();
+    goBtn.addEventListener("click", () => openSite(addressInput.value));
+    addressInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") openSite(addressInput.value);
     });
 
-    btnBack.addEventListener('click', async () => {
-      const r = await vsBrowser.back();
-      if (!r.ok) statusEl.textContent = 'В истории нет предыдущей страницы';
+    // Автозагрузка welcome.vs при первом открытии браузера
+    window.addEventListener("DOMContentLoaded", () => {
+      const defaultSite = "welcome.vs";
+      addressInput.value = defaultSite;
+      openSite(defaultSite);
     });
-    btnForward.addEventListener('click', async () => {
-      const r = await vsBrowser.forward();
-      if (!r.ok) statusEl.textContent = 'В истории нет следующей страницы';
-    });
-    btnReload.addEventListener('click', async () => {
-      const r = await vsBrowser.reload();
-      if (!r.ok) statusEl.textContent = 'Нет страницы для перезагрузки';
-    });
-
-    // Когда iframe загружает документ — инжектим наши обработчики ссылок/форм
-    iframe.addEventListener('load', () => {
-      // обновим адресную строку если история указывает
-      const entry = vsBrowser.history[vsBrowser.historyIndex];
-      if (entry && entry.site) {
-        address.value = `${entry.site}.vs`;
-      }
-
-      // подожди небольшую паузу — потом инжектим
-      setTimeout(() => {
-        vsBrowser.attachSandboxHandlers();
-      }, 50);
-    });
-
-    // Анимация статуса — отображаем короткие подсказки
-    const originalStatus = statusEl.textContent;
-    const statusObserver = new MutationObserver(() => {
-      // можно тут расширить, например подсвечивать
-    });
-    statusObserver.observe(statusEl, { characterData: true, childList: true, subtree: true });
-
-    // Автозагрузка: если в адресной строке в url что-то есть (git pages?), попробуем открыть
-    function checkUrlParams() {
-      const p = new URLSearchParams(location.search);
-      if (p.has('open')) {
-        address.value = p.get('open');
-        openAddress();
-      }
-    }
-    checkUrlParams();
-
-    // Совет: чтобы добавить сайт, в репо положи папку /sites/<name>/start.html
-    // Пример: /sites/gov/start.html -> откроется при вводе gov.vs
   </script>
 </body>
 </html>
