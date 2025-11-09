@@ -7,7 +7,6 @@ class VSBrowserAPI {
     
     // Новая вспомогательная функция для определения, является ли ресурс HTML
     isHtmlResource(path) {
-        // Ресурс считается HTML, если он заканчивается на .html или является корневым start.html
         return path.endsWith('.html') || path.endsWith('/start.html');
     }
 
@@ -35,6 +34,44 @@ class VSBrowserAPI {
 
         return false;
     }
+
+    // НОВОЕ: Функция для получения абсолютного пути к файловой системе хоста
+    getAbsoluteHostPath(baseUrl, link) {
+        // 1. Решаем относительный URL (например, "site.vs/page.html" + "style.css" -> "site.vs/style.css")
+        const resolvedUrl = this.resolveRelativeUrl(baseUrl, link);
+        
+        const urlParts = resolvedUrl.split('/');
+        const domain = urlParts[0]; 
+        const path = urlParts.slice(1).join('/'); 
+
+        let sitePath;
+        
+        // 2. Преобразуем resolvedUrl в путь, который существует в папке ./sites/
+        if (this.isSubdomain(domain)) {
+            const domainParts = domain.split('.');
+            const subdomain = domainParts[0];
+            const mainDomain = domainParts[1];
+            // downdomain
+            sitePath = `${mainDomain}/${subdomain}.downdomain/${path}`;
+        } else {
+            const siteName = domain.replace('.vs', '');
+            
+            const firstPath = urlParts[1];
+            if (this.isUpdomainPath(siteName, firstPath)) {
+                // updomain - берем путь внутри папки updomain.updomain
+                const partsAfterDomain = path.split('/');
+                const updomainFolder = partsAfterDomain[0]; 
+                const resourcePath = partsAfterDomain.slice(1).join('/'); 
+                sitePath = `${siteName}/${updomainFolder}.updomain/${resourcePath}`;
+            } else {
+                // Обычный домен
+                sitePath = `${siteName}/${path}`;
+            }
+        }
+        
+        // 3. Добавляем префикс "./sites/"
+        return this.sitesBaseUrl + sitePath;
+    }
     
     async loadWebsite(url) {
         try {
@@ -53,10 +90,8 @@ class VSBrowserAPI {
                 throw new Error(`Сайт не найден: ${url}`);
             }
             
-            // Запрашиваем контент как текст для HTML, CSS, JS и TXT
             let content = await response.text();
 
-            // Только HTML-ресурсы проходят полную обработку (инъекция скриптов и замена ссылок)
             if (this.isHtmlResource(sitePath)) {
                 content = this.processHtmlContent(content, lowercasedUrl);
             }
@@ -80,7 +115,6 @@ class VSBrowserAPI {
         const domain = urlParts[0]; 
         const path = urlParts.slice(1).join('/'); 
 
-        // 1. Обработка поддоменов
         if (this.isSubdomain(domain)) {
             const domainParts = domain.split('.');
             const subdomain = domainParts[0];
@@ -92,8 +126,6 @@ class VSBrowserAPI {
                 return `${mainDomain}/${subdomain}.downdomain/start.html`;
             }
         }
-        
-        // 2. Обработка обычных доменов и путей
         
         const siteName = domain.replace('.vs', '');
 
@@ -128,6 +160,7 @@ class VSBrowserAPI {
         const basePath = this.getBasePath(baseUrl);
         const baseTag = `<base href="${basePath}">`;
         
+        // Вставляем BASE HREF - он все еще нужен для корректного разрешения URL в IFRAME
         if (content.includes('</head>')) {
             content = content.replace('</head>', `${baseTag}</head>`);
         } else if (content.includes('<head>')) {
@@ -136,6 +169,12 @@ class VSBrowserAPI {
             content = `<head>${baseTag}</head>` + content;
         }
         
+        // НОВОЕ: Обработка SRC-атрибутов (Img, Script, etc.)
+        content = content.replace(/src="([^"]*)"/gi, (match, src) => {
+            return this.processSrc(src, baseUrl, match);
+        });
+        
+        // Обработка HREF-атрибутов
         content = content.replace(/href="([^"]*)"/gi, (match, href) => {
             return this.processHref(href, baseUrl, match);
         });
@@ -149,18 +188,30 @@ class VSBrowserAPI {
         return content;
     }
     
+    // НОВОЕ: Обработка SRC-атрибутов
+    processSrc(src, baseUrl, originalMatch) {
+        if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('#')) {
+            return originalMatch;
+        }
+        
+        // Заменяем относительный путь на абсолютный путь к файлу на диске
+        const absoluteHostPath = this.getAbsoluteHostPath(baseUrl, src);
+        return `src="${absoluteHostPath}"`;
+    }
+
     processHref(href, baseUrl, originalMatch) {
         if (href.startsWith('http') || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) {
             return originalMatch;
         }
         
-        // НОВОЕ ИСПРАВЛЕНИЕ: Если это относительная ссылка на ресурс (CSS, JS, Image), не перехватываем ее.
-        // Она будет загружена нативно браузером, используя тег <base href>.
-        if (!href.startsWith('/') && this.isResourceLink(href)) {
-            return originalMatch; 
+        // ИСПРАВЛЕНИЕ: Если это ссылка на ресурс (CSS/Favicon), заменяем ее на абсолютный путь
+        if (this.isResourceLink(href)) {
+            const absoluteHostPath = this.getAbsoluteHostPath(baseUrl, href);
+            // Заменяем только сам путь, сохраняя структуру <link href="...">
+            return originalMatch.replace(href, absoluteHostPath);
         }
         
-        // Остальное — это навигация, которую мы перехватываем
+        // Если это навигация (a href="page.html"), перехватываем
         if (href.startsWith('/')) {
             const domain = baseUrl.split('/')[0];
             const newUrl = domain + href;
@@ -176,7 +227,6 @@ class VSBrowserAPI {
             return originalMatch;
         }
         
-        // Form action всегда перехватываем, так как это навигационное событие
         if (action.startsWith('/')) {
             const domain = baseUrl.split('/')[0];
             const newUrl = domain + action;
@@ -286,4 +336,3 @@ const vsBrowser = new VSBrowserAPI();
 async function loadWebsite(url) {
     return await vsBrowser.loadWebsite(url);
 }
-
