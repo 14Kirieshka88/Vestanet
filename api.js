@@ -5,12 +5,10 @@ class VSBrowserAPI {
         this.currentDomain = '';
     }
     
-    // Новая вспомогательная функция для определения, является ли ресурс HTML
     isHtmlResource(path) {
         return path.endsWith('.html') || path.endsWith('/start.html');
     }
 
-    // НОВОЕ: Функция для определения, является ли ссылка внешним ресурсом (CSS, JS, Image)
     isResourceLink(url) {
         const resourceExtensions = [
             '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', 
@@ -19,15 +17,12 @@ class VSBrowserAPI {
         ];
         const lowerUrl = url.toLowerCase();
         
-        // Проверяем по известным расширениям
         for (const ext of resourceExtensions) {
             if (lowerUrl.includes(ext)) {
                 return true;
             }
         }
         
-        // Также считаем ресурсом любую относительную ссылку, содержащую точку, 
-        // но не заканчивающуюся на .html и не являющуюся абсолютной ссылкой.
         if (lowerUrl.includes('.') && !lowerUrl.endsWith('.html') && !lowerUrl.startsWith('/') && !lowerUrl.includes('?')) {
              return true;
         }
@@ -37,7 +32,7 @@ class VSBrowserAPI {
 
     // НОВОЕ: Функция для получения абсолютного пути к файловой системе хоста
     getAbsoluteHostPath(baseUrl, link) {
-        // 1. Решаем относительный URL (например, "site.vs/page.html" + "style.css" -> "site.vs/style.css")
+        // 1. Решаем относительный URL
         const resolvedUrl = this.resolveRelativeUrl(baseUrl, link);
         
         const urlParts = resolvedUrl.split('/');
@@ -157,10 +152,11 @@ class VSBrowserAPI {
     }
     
     processHtmlContent(content, baseUrl) {
+        // Тег <base href> все равно нужен для корректного разрешения абсолютных путей
+        // и для корректной работы window.location внутри iframe.
         const basePath = this.getBasePath(baseUrl);
         const baseTag = `<base href="${basePath}">`;
         
-        // Вставляем BASE HREF - он все еще нужен для корректного разрешения URL в IFRAME
         if (content.includes('</head>')) {
             content = content.replace('</head>', `${baseTag}</head>`);
         } else if (content.includes('<head>')) {
@@ -169,7 +165,7 @@ class VSBrowserAPI {
             content = `<head>${baseTag}</head>` + content;
         }
         
-        // НОВОЕ: Обработка SRC-атрибутов (Img, Script, etc.)
+        // Обработка SRC-атрибутов (Img, Script, etc.)
         content = content.replace(/src="([^"]*)"/gi, (match, src) => {
             return this.processSrc(src, baseUrl, match);
         });
@@ -188,7 +184,7 @@ class VSBrowserAPI {
         return content;
     }
     
-    // НОВОЕ: Обработка SRC-атрибутов
+    // Обработка SRC-атрибутов (Изображения, Скрипты)
     processSrc(src, baseUrl, originalMatch) {
         if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('#')) {
             return originalMatch;
@@ -199,12 +195,13 @@ class VSBrowserAPI {
         return `src="${absoluteHostPath}"`;
     }
 
+    // Обработка HREF-атрибутов (Навигация и CSS)
     processHref(href, baseUrl, originalMatch) {
         if (href.startsWith('http') || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) {
             return originalMatch;
         }
         
-        // ИСПРАВЛЕНИЕ: Если это ссылка на ресурс (CSS/Favicon), заменяем ее на абсолютный путь
+        // Если это ссылка на ресурс (CSS/Favicon), заменяем на абсолютный путь
         if (this.isResourceLink(href)) {
             const absoluteHostPath = this.getAbsoluteHostPath(baseUrl, href);
             // Заменяем только сам путь, сохраняя структуру <link href="...">
