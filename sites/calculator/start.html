@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Универсальный Калькулятор</title>
+    
+    <style>
+        /* Общие стили и адаптивность */
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            flex-direction: column; /* Для выравнивания всего содержимого */
+        }
+        
+        .main-container {
+            display: flex;
+            gap: 20px;
+            max-width: 900px;
+            width: 90%;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Адаптивный дизайн (Mobile First) */
+        .calculator, .notes-area {
+            width: 100%;
+        }
+
+        /* Стили для мобильных устройств (ширина до 600px) */
+        @media (max-width: 600px) {
+            .main-container {
+                flex-direction: column; /* Калькулятор и заметки друг под другом */
+                width: 95%;
+            }
+            .notes-area {
+                margin-top: 20px;
+            }
+        }
+
+        /* Стили для десктопов (ширина более 600px) */
+        @media (min-width: 601px) {
+            .calculator {
+                width: 45%;
+            }
+            .notes-area {
+                width: 55%;
+                border-left: 1px solid #ccc;
+                padding-left: 20px;
+            }
+        }
+
+        /* Стили калькулятора */
+        #display {
+            width: 100%;
+            height: 50px;
+            margin-bottom: 10px;
+            font-size: 2em;
+            text-align: right;
+            border: 1px solid #ccc;
+            padding: 5px;
+            box-sizing: border-box;
+        }
+
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 5px;
+        }
+
+        .buttons button {
+            padding: 15px;
+            font-size: 1.2em;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #e6e6e6;
+            transition: background-color 0.1s;
+        }
+
+        .buttons button:hover {
+            background-color: #d4d4d4;
+        }
+        
+        /* Стили для переключения режимов */
+        #mode-select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 1em;
+        }
+
+        /* Стили для заметок (Canvas) */
+        #drawing-canvas {
+            border: 1px solid #000;
+            cursor: crosshair; /* Курсор для рисования */
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-container">
+        
+        <div class="calculator">
+            <h2>🔢 Калькулятор</h2>
+            
+            <select id="mode-select" onchange="changeMode(this.value)">
+                <option value="basic">Базовый</option>
+                <option value="mechanical">Механический</option>
+                <option value="scientific">Научный</option>
+            </select>
+
+            <input type="text" id="display" readonly value="0">
+            
+            <div class="buttons" id="calc-buttons">
+                <button onclick="clearDisplay()">AC</button>
+                <button onclick="appendValue('(')">(</button>
+                <button onclick="appendValue(')')">)</button>
+                <button onclick="appendValue('/')">/</button>
+
+                <button onclick="appendValue('7')">7</button>
+                <button onclick="appendValue('8')">8</button>
+                <button onclick="appendValue('9')">9</button>
+                <button onclick="appendValue('*')">×</button>
+
+                <button onclick="appendValue('4')">4</button>
+                <button onclick="appendValue('5')">5</button>
+                <button onclick="appendValue('6')">6</button>
+                <button onclick="appendValue('-')">-</button>
+
+                <button onclick="appendValue('1')">1</button>
+                <button onclick="appendValue('2')">2</button>
+                <button onclick="appendValue('3')">3</button>
+                <button onclick="appendValue('+')">+</button>
+
+                <button onclick="appendValue('0')">0</button>
+                <button onclick="appendValue('.')">.</button>
+                <button onclick="calculateResult()" style="grid-column: span 2; background-color: #4CAF50; color: white;">=</button>
+            </div>
+            
+            <div id="mechanical-output" style="margin-top: 15px; display: none;">
+                <p>Механический режим: Отображение пошаговых операций...</p>
+            </div>
+        </div>
+
+        <div class="notes-area">
+            <h2>✍️ Заметки/Стилус</h2>
+            <p>Рисуйте здесь. В будущем ИИ сможет распознавать ваши записи!</p>
+            <canvas id="drawing-canvas" width="400" height="200"></canvas>
+            <button onclick="clearCanvas()" style="margin-top: 10px; padding: 8px;">Очистить Заметки</button>
+            <button onclick="recognizeText()" style="margin-top: 10px; padding: 8px;">Распознать (ИИ)</button>
+            <div id="recognition-output" style="margin-top: 10px; border: 1px dashed #000; padding: 5px; min-height: 20px;"></div>
+        </div>
+
+    </div>
+
+    <script>
+        const display = document.getElementById('display');
+        const canvas = document.getElementById('drawing-canvas');
+        const ctx = canvas.getContext('2d');
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        // --- ЛОГИКА КАЛЬКУЛЯТОРА ---
+
+        function appendValue(value) {
+            if (display.value === '0') {
+                display.value = value;
+            } else {
+                display.value += value;
+            }
+        }
+
+        function clearDisplay() {
+            display.value = '0';
+        }
+
+        function calculateResult() {
+            try {
+                // Используем eval() для простой математики.
+                // В реальном приложении для безопасности и точности следует использовать специализированные парсеры (например, Math.js)
+                let result = eval(display.value.replace(/×/g, '*'));
+                display.value = result;
+            } catch (e) {
+                display.value = 'Ошибка';
+            }
+        }
+
+        function changeMode(mode) {
+            const mechOutput = document.getElementById('mechanical-output');
+            
+            // Здесь должна быть логика для "Механического" режима:
+            // 1. Изменение набора кнопок (при необходимости).
+            // 2. Отображение или скрытие области пошагового вывода.
+            
+            mechOutput.style.display = 'none'; // По умолчанию скрываем
+            
+            if (mode === 'basic') {
+                // Загрузить кнопки базового режима
+            } else if (mode === 'mechanical') {
+                // В этом режиме логика `calculateResult` должна стать более сложной,
+                // чтобы НЕ использовать `eval()`, а выполнять пошаговые операции,
+                // записывая их в `mechanical-output`.
+                mechOutput.style.display = 'block';
+            } else if (mode === 'scientific') {
+                // Загрузить кнопки научного режима (sin, cos, log, etc.)
+            }
+            
+            display.value = 'Режим: ' + mode;
+        }
+
+
+        // --- ЛОГИКА РИСОВАНИЯ (CANVAS) ---
+
+        // Установка размеров Canvas для адаптивности
+        function resizeCanvas() {
+            const notesArea = document.querySelector('.notes-area');
+            canvas.width = notesArea.clientWidth - 2; // Учитываем границы
+            canvas.height = 200; 
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = 'black';
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas(); // Инициализация размера
+
+        // Функции для рисования
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            [lastX, lastY] = [e.offsetX, e.offsetY];
+        });
+        canvas.addEventListener('mousemove', draw);
+        canvas.addEventListener('mouseup', () => isDrawing = false);
+        canvas.addEventListener('mouseout', () => isDrawing = false);
+
+        // Добавляем поддержку стилуса/тачскрина
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Предотвращаем прокрутку
+            isDrawing = true;
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            [lastX, lastY] = [touch.clientX - rect.left, touch.clientY - rect.top];
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!isDrawing) return;
+            const touch = e.touches[0];
+            const rect = canvas.getBoundingClientRect();
+            draw({ offsetX: touch.clientX - rect.left, offsetY: touch.clientY - rect.top });
+            [lastX, lastY] = [touch.clientX - rect.left, touch.clientY - rect.top];
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', () => isDrawing = false);
+        canvas.addEventListener('touchcancel', () => isDrawing = false);
+
+
+        function draw(e) {
+            if (!isDrawing) return;
+            ctx.beginPath();
+            ctx.moveTo(lastX, lastY);
+            ctx.lineTo(e.offsetX, e.offsetY);
+            ctx.stroke();
+            [lastX, lastY] = [e.offsetX, e.offsetY];
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.getElementById('recognition-output').innerText = '';
+        }
+
+        // --- ПРОВЕРКА УСТРОЙСТВА И АДАПТАЦИЯ ИНТЕРФЕЙСА ---
+
+        function checkDeviceAndAdapt() {
+            // Проверка на мобильность:
+            // 1. Проверяем ширину экрана (просто, но не всегда точно)
+            // 2. Проверяем наличие 'ontouchstart' (более надежный признак сенсорного экрана)
+            const isMobile = window.matchMedia("only screen and (max-width: 600px)").matches || 
+                             ('ontouchstart' in window) || 
+                             (navigator.maxTouchPoints > 0);
+            
+            // Здесь можно добавить дополнительную логику для изменения CSS-классов
+            // или структуры HTML, если это необходимо для более глубокой адаптации.
+            
+            console.log(isMobile ? 'Мобильное устройство' : 'Компьютер');
+            
+            // Например, для мобильных устройств можно автоматически увеличить размер шрифта кнопок.
+        }
+
+        window.onload = checkDeviceAndAdapt;
+        window.addEventListener('resize', checkDeviceAndAdapt);
+
+
+        // --- ЗАГЛУШКА ДЛЯ ИИ РАСПОЗНАВАНИЯ ---
+
+        function recognizeText() {
+            // В РЕАЛЬНОМ ПРИЛОЖЕНИИ: 
+            // 1. Получить изображение с canvas: `canvas.toDataURL('image/png')`
+            // 2. Отправить его на сервер или использовать локальную модель (например, Tesseract.js или web-версию мощной модели, если она доступна)
+            // 3. Получить распознанный текст.
+            
+            const output = document.getElementById('recognition-output');
+            output.innerText = '⏳ Имитация распознавания... (требуется мощный JS/серверное API для реального ИИ)';
+            
+            // Имитация результата
+            setTimeout(() => {
+                output.innerText = 'Распознано: 12 + X = 30'; // Пример распознанного текста
+                // В идеале, если это вычисление, оно должно быть подставлено в калькулятор:
+                // display.value = '12+18'; // Пример подстановки
+            }, 1500);
+        }
+
+    </script>
+
+</body>
+</html>
