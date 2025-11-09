@@ -5,11 +5,17 @@ class VSBrowserAPI {
         this.currentDomain = '';
     }
     
+    // Новая вспомогательная функция для определения, является ли ресурс HTML
+    isHtmlResource(path) {
+        // Ресурс считается HTML, если он заканчивается на .html или является корневым start.html
+        return path.endsWith('.html') || path.endsWith('/start.html');
+    }
+    
     async loadWebsite(url) {
         try {
             console.log('Loading URL:', url);
             
-            // НОВОЕ: Преобразуем всю часть URL, связанную с доменом, в нижний регистр для корректной обработки
+            // ИСПРАВЛЕНИЕ: Преобразуем URL в нижний регистр для регистронезависимости
             const lowercasedUrl = url.toLowerCase();
             
             this.currentDomain = this.extractDomain(lowercasedUrl);
@@ -24,7 +30,12 @@ class VSBrowserAPI {
             }
             
             let content = await response.text();
-            content = this.processHtmlContent(content, lowercasedUrl);
+
+            // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Только HTML-ресурсы проходят полную обработку
+            if (this.isHtmlResource(sitePath)) {
+                content = this.processHtmlContent(content, lowercasedUrl);
+            }
+            // ИНАЧЕ: Для CSS, JS, TXT и других файлов возвращаем сырой текст
             
             return content;
         } catch (error) {
@@ -76,6 +87,7 @@ class VSBrowserAPI {
             }
         }
         
+        // Простой домен типа site.vs
         return `${siteName}/start.html`;
     }
     
