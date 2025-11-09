@@ -5,6 +5,19 @@ class VSBrowserAPI {
         this.currentDomain = '';
     }
     
+    // НОВАЯ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
+    getHostBaseUrl() {
+        // window.location.origin: https://14kirieshka88.github.io
+        // window.location.pathname: /Vestanet/browser.html
+        
+        // Получаем путь до директории, где лежит browser.html
+        let path = window.location.pathname;
+        let baseDir = path.substring(0, path.lastIndexOf('/') + 1);
+        
+        // Возвращаем полный базовый URL (например, https://14kirieshka88.github.io/Vestanet/)
+        return window.location.origin + baseDir;
+    }
+
     isHtmlResource(path) {
         return path.endsWith('.html') || path.endsWith('/start.html');
     }
@@ -30,9 +43,9 @@ class VSBrowserAPI {
         return false;
     }
 
-    // НОВОЕ: Функция для получения абсолютного пути к файловой системе хоста
+    // ИСПРАВЛЕНО: Теперь возвращает полный публичный URL
     getAbsoluteHostPath(baseUrl, link) {
-        // 1. Решаем относительный URL
+        // 1. Решаем относительный URL (как будто мы находимся в start.html)
         const resolvedUrl = this.resolveRelativeUrl(baseUrl, link);
         
         const urlParts = resolvedUrl.split('/');
@@ -41,31 +54,35 @@ class VSBrowserAPI {
 
         let sitePath;
         
-        // 2. Преобразуем resolvedUrl в путь, который существует в папке ./sites/
+        // 2. Преобразуем в локальный путь относительно папки ./sites/
         if (this.isSubdomain(domain)) {
             const domainParts = domain.split('.');
             const subdomain = domainParts[0];
             const mainDomain = domainParts[1];
-            // downdomain
             sitePath = `${mainDomain}/${subdomain}.downdomain/${path}`;
         } else {
             const siteName = domain.replace('.vs', '');
             
             const firstPath = urlParts[1];
             if (this.isUpdomainPath(siteName, firstPath)) {
-                // updomain - берем путь внутри папки updomain.updomain
                 const partsAfterDomain = path.split('/');
                 const updomainFolder = partsAfterDomain[0]; 
                 const resourcePath = partsAfterDomain.slice(1).join('/'); 
                 sitePath = `${siteName}/${updomainFolder}.updomain/${resourcePath}`;
             } else {
-                // Обычный домен
                 sitePath = `${siteName}/${path}`;
             }
         }
         
-        // 3. Добавляем префикс "./sites/"
-        return this.sitesBaseUrl + sitePath;
+        // 3. Собираем полный публичный URL!
+        // Получаем базовый URL хоста (например, https://14kirieshka88.github.io/Vestanet/)
+        const hostBaseUrl = this.getHostBaseUrl();
+        
+        // Собираем: hostBaseUrl + sites/ + sitePath
+        // Мы используем sitesBaseUrl (который равен './sites/') и убираем './'
+        const cleanSitesBase = this.sitesBaseUrl.replace('./', '');
+        
+        return hostBaseUrl + cleanSitesBase + sitePath;
     }
     
     async loadWebsite(url) {
@@ -152,8 +169,6 @@ class VSBrowserAPI {
     }
     
     processHtmlContent(content, baseUrl) {
-        // Тег <base href> все равно нужен для корректного разрешения абсолютных путей
-        // и для корректной работы window.location внутри iframe.
         const basePath = this.getBasePath(baseUrl);
         const baseTag = `<base href="${basePath}">`;
         
@@ -184,27 +199,24 @@ class VSBrowserAPI {
         return content;
     }
     
-    // Обработка SRC-атрибутов (Изображения, Скрипты)
     processSrc(src, baseUrl, originalMatch) {
         if (src.startsWith('http') || src.startsWith('data:') || src.startsWith('#')) {
             return originalMatch;
         }
         
-        // Заменяем относительный путь на абсолютный путь к файлу на диске
+        // Заменяем относительный путь на ПОЛНЫЙ АБСОЛЮТНЫЙ URL
         const absoluteHostPath = this.getAbsoluteHostPath(baseUrl, src);
         return `src="${absoluteHostPath}"`;
     }
 
-    // Обработка HREF-атрибутов (Навигация и CSS)
     processHref(href, baseUrl, originalMatch) {
         if (href.startsWith('http') || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) {
             return originalMatch;
         }
         
-        // Если это ссылка на ресурс (CSS/Favicon), заменяем на абсолютный путь
+        // Если это ссылка на ресурс (CSS/Favicon), заменяем на ПОЛНЫЙ АБСОЛЮТНЫЙ URL
         if (this.isResourceLink(href)) {
             const absoluteHostPath = this.getAbsoluteHostPath(baseUrl, href);
-            // Заменяем только сам путь, сохраняя структуру <link href="...">
             return originalMatch.replace(href, absoluteHostPath);
         }
         
