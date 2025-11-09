@@ -10,12 +10,36 @@ class VSBrowserAPI {
         // Ресурс считается HTML, если он заканчивается на .html или является корневым start.html
         return path.endsWith('.html') || path.endsWith('/start.html');
     }
+
+    // НОВОЕ: Функция для определения, является ли ссылка внешним ресурсом (CSS, JS, Image)
+    isResourceLink(url) {
+        const resourceExtensions = [
+            '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', 
+            '.svg', '.webp', '.mp3', '.mp4', '.txt', '.json',
+            '.pdf', '.ico'
+        ];
+        const lowerUrl = url.toLowerCase();
+        
+        // Проверяем по известным расширениям
+        for (const ext of resourceExtensions) {
+            if (lowerUrl.includes(ext)) {
+                return true;
+            }
+        }
+        
+        // Также считаем ресурсом любую относительную ссылку, содержащую точку, 
+        // но не заканчивающуюся на .html и не являющуюся абсолютной ссылкой.
+        if (lowerUrl.includes('.') && !lowerUrl.endsWith('.html') && !lowerUrl.startsWith('/') && !lowerUrl.includes('?')) {
+             return true;
+        }
+
+        return false;
+    }
     
     async loadWebsite(url) {
         try {
             console.log('Loading URL:', url);
             
-            // ИСПРАВЛЕНИЕ: Преобразуем URL в нижний регистр для регистронезависимости
             const lowercasedUrl = url.toLowerCase();
             
             this.currentDomain = this.extractDomain(lowercasedUrl);
@@ -29,13 +53,13 @@ class VSBrowserAPI {
                 throw new Error(`Сайт не найден: ${url}`);
             }
             
+            // Запрашиваем контент как текст для HTML, CSS, JS и TXT
             let content = await response.text();
 
-            // ГЛАВНОЕ ИСПРАВЛЕНИЕ: Только HTML-ресурсы проходят полную обработку
+            // Только HTML-ресурсы проходят полную обработку (инъекция скриптов и замена ссылок)
             if (this.isHtmlResource(sitePath)) {
                 content = this.processHtmlContent(content, lowercasedUrl);
             }
-            // ИНАЧЕ: Для CSS, JS, TXT и других файлов возвращаем сырой текст
             
             return content;
         } catch (error) {
@@ -87,7 +111,6 @@ class VSBrowserAPI {
             }
         }
         
-        // Простой домен типа site.vs
         return `${siteName}/start.html`;
     }
     
@@ -131,6 +154,13 @@ class VSBrowserAPI {
             return originalMatch;
         }
         
+        // НОВОЕ ИСПРАВЛЕНИЕ: Если это относительная ссылка на ресурс (CSS, JS, Image), не перехватываем ее.
+        // Она будет загружена нативно браузером, используя тег <base href>.
+        if (!href.startsWith('/') && this.isResourceLink(href)) {
+            return originalMatch; 
+        }
+        
+        // Остальное — это навигация, которую мы перехватываем
         if (href.startsWith('/')) {
             const domain = baseUrl.split('/')[0];
             const newUrl = domain + href;
@@ -146,6 +176,7 @@ class VSBrowserAPI {
             return originalMatch;
         }
         
+        // Form action всегда перехватываем, так как это навигационное событие
         if (action.startsWith('/')) {
             const domain = baseUrl.split('/')[0];
             const newUrl = domain + action;
@@ -255,3 +286,4 @@ const vsBrowser = new VSBrowserAPI();
 async function loadWebsite(url) {
     return await vsBrowser.loadWebsite(url);
 }
+
