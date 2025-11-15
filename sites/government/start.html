@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Правительство Альянса Весталия</title>
+<style>
+:root {
+  --bg: #faf8f0;
+  --text: #222;
+  --accent: #f0c741;
+  --card: #fff;
+  --border: #e6c456;
+}
+
+body.dark {
+  --bg: #0b0b0b;
+  --text: #f5d473;
+  --accent: #c7a94a;
+  --card: #111;
+  --border: #c7a94a;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  transition: background 0.3s, color 0.3s;
+  overflow-x: hidden;
+}
+
+/* === Шапка === */
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--card);
+  padding: 15px 20px;
+  border-bottom: 2px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+header h1 {
+  margin: 0;
+  font-size: 1.6em;
+}
+header .btn {
+  background: linear-gradient(90deg, var(--accent), var(--text));
+  color: #000;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+header .btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 10px var(--accent);
+}
+
+/* === Монарх === */
+.monarch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  background: var(--card);
+  margin: 25px auto;
+  padding: 20px;
+  border-radius: 15px;
+  width: 90%;
+  max-width: 900px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.1);
+}
+.monarch img {
+  width: 180px;
+  border-radius: 12px;
+  margin: 15px;
+  border: 2px solid var(--accent);
+}
+.monarch-info {
+  max-width: 500px;
+}
+
+/* === Символы === */
+.symbols {
+  text-align: center;
+  padding: 20px;
+}
+.symbols .images {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 25px;
+}
+.symbols img {
+  width: 160px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  transition: transform 0.3s;
+}
+.symbols img:hover {
+  transform: scale(1.05);
+}
+
+/* === Кнопки === */
+.gold-btn {
+  display: block;
+  margin: 30px auto;
+  background: linear-gradient(90deg, var(--accent), var(--text));
+  color: #000;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.gold-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 10px var(--accent);
+}
+
+/* === Подвал === */
+footer {
+  text-align: center;
+  padding: 30px;
+  background: var(--card);
+  border-top: 2px solid var(--border);
+}
+footer a {
+  color: var(--text);
+  text-decoration: none;
+}
+footer a:hover {
+  text-decoration: underline;
+}
+
+/* === Модалка === */
+.modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background-color: rgba(0,0,0,0.7);
+}
+.modal-content {
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  margin: 5% auto;
+  width: 90%;
+  max-width: 800px;
+  height: 80%;
+  position: relative;
+}
+.close {
+  position: absolute;
+  top: 5px;
+  right: 15px;
+  font-size: 28px;
+  cursor: pointer;
+  color: var(--accent);
+}
+iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0 0 12px 12px;
+}
+
+/* === Мобильная адаптация === */
+@media (max-width: 600px) {
+  header {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .monarch img {
+    width: 130px;
+  }
+  .symbols img {
+    width: 120px;
+  }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚜️ Весталия ⚜️</h1>
+  <div>
+    <button class="btn" onclick="perehod()">Присоединиться</button>
+    <button class="btn" onclick="toggleTheme()">🌗 Тема</button>
+  </div>
+</header>
+
+<main>
+  <section class="monarch">
+    <img src="images/kirill.jpg" alt="Кирилл Хинди">
+    <div class="monarch-info">
+      <h2>Монарх Весталии: Кирилл Хинди</h2>
+      <p>Кирилл Хинди - верховный монарх и лидер Весталии, символ единства и силы нашего Альянса.</p>
+    </div>
+  </section>
+
+  <section class="symbols">
+    <h2>Флаг и герб Весталии</h2>
+    <div class="images">
+      <img src="images/flag.png" alt="Флаг Весталии">
+      <img src="images/coat.png" alt="Герб Весталии">
+    </div>
+  </section>
+
+  <button class="gold-btn" id="openMembers">Посмотреть участников</button>
+</main>
+
+<footer>
+  <h3>Контакты</h3>
+  <p>📧 <a href="mailto:vestalygov@gmail.com">vestalygov@gmail.com</a></p>
+</footer>
+
+<!-- Модалка -->
+<div id="membersModal" class="modal">
+  <div class="modal-content">
+    <span class="close">&times;</span>
+    <iframe id="membersFrame" src="members.html"></iframe>
+  </div>
+</div>
+
+<script>
+function perehod() {
+  if (typeof VSNavigate !== 'undefined') {
+    VSNavigate('join.government.vs');
+  } else if (window.parent && window.parent.navigateTo) {
+    window.parent.navigateTo('join.government.vs');
+  } else {
+    window.open('join.government.vs', '_blank');
+  }
+}
+
+// Модалка
+const modal = document.getElementById('membersModal');
+const openBtn = document.getElementById('openMembers');
+const closeBtn = document.querySelector('.close');
+openBtn.onclick = () => modal.style.display = 'block';
+closeBtn.onclick = () => modal.style.display = 'none';
+window.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
+
+// Тема
+function toggleTheme() {
+  document.body.classList.toggle('dark');
+  localStorage.setItem('theme', document.body.classList.contains('dark') ? 'dark' : 'light');
+}
+if (localStorage.getItem('theme') === 'dark') document.body.classList.add('dark');
+</script>
+</body>
+</html>
