@@ -7,11 +7,11 @@
         function handleGovermentMoving() {
             // В нашем браузере используем навигацию VS
             if (typeof VSNavigate !== 'undefined') {
-                VSNavigate('goverment.vs');
+                VSNavigate('government.vs');
             } else if (window.parent && typeof window.parent.navigateTo === 'function') {
-                window.parent.navigateTo('goverment.vs');
+                window.parent.navigateTo('government.vs');
             } else {
-                window.open('goverment.vs', '_blank');
+                window.open('government.vs', '_blank');
             }
         }
 
