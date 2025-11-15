@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Участники Весталии</title>
+<style>
+:root {
+  --bg: #faf8f0;
+  --text: #222;
+  --accent: #f0c741;
+  --card: #fff;
+  --border: #e6c456;
+}
+
+body.dark {
+  --bg: #0b0b0b;
+  --text: #f5d473;
+  --accent: #c7a94a;
+  --card: #111;
+  --border: #c7a94a;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  transition: background 0.3s, color 0.3s;
+}
+
+/* === Заголовок === */
+header {
+  text-align: center;
+  padding: 15px;
+  border-bottom: 2px solid var(--border);
+  background: var(--card);
+}
+header h1 {
+  margin: 0;
+  font-size: 1.6em;
+}
+
+/* === Карточки участников === */
+.members {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 25px;
+  padding: 20px;
+}
+.member {
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 15px;
+  padding: 15px;
+  width: 280px;
+  box-shadow: 0 0 12px rgba(0,0,0,0.1);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.member:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 0 20px var(--accent);
+}
+.member img {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 2px solid var(--accent);
+}
+.member h2 {
+  margin: 10px 0 5px;
+  font-size: 1.2em;
+}
+.member h3 {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 1em;
+}
+.member p {
+  font-size: 0.95em;
+}
+.member a {
+  display: inline-block;
+  margin-top: 8px;
+  text-decoration: none;
+  font-weight: bold;
+  color: var(--text);
+  border: 1px solid var(--accent);
+  padding: 6px 10px;
+  border-radius: 8px;
+  transition: background 0.2s;
+}
+.member a:hover {
+  background: var(--accent);
+  color: #000;
+}
+
+/* === Мобильная адаптация === */
+@media (max-width: 600px) {
+  .member {
+    width: 90%;
+  }
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Участники Весталии</h1>
+</header>
+
+<section class="members" id="membersList">
+  <p style="text-align:center;">Загрузка участников...</p>
+</section>
+
+<script>
+// Встроенный JSON с участниками
+const members = [
+  {
+    "name": "Роман фон Габсбург",
+    "rank": "Примьер-Министр",
+    "description": "Примьер-Министр Весталии, и посовместительству правая рука Призидента Весталии.",
+    "image": "images/roman.png",
+    "site": "rvh.vs"
+  },
+  {
+    "name": "Вова Володин",
+    "rank": "Работодатель",
+    "description": "Повышает или понижает участников альянса.",
+    "image": "images/volodin.png",
+    "site": "vv.members.vs"
+  },
+  {
+    "name": "Максим Коровин",
+    "rank": "Админ-Наниматель",
+    "description": "Принимает людей в вступление в альянс Весталии.",
+    "image": "images/korovin.png",
+    "site": ""
+  },
+   {
+    "name": "Жиргалбек Жандозов",
+    "rank": "Воин",
+    "description": "Участник армии Весталии.",
+    "image": "images/zhandozov.png",
+    "site": ""
+  },
+   {
+    "name": "Кирилл Червов",
+    "rank": "Воин",
+    "description": "Участник армии Весталии.",
+    "image": "images/chervov.png",
+    "site": ""
+  },
+];
+
+// Отображение участников
+function showMembers(members) {
+  const container = document.getElementById('membersList');
+  container.innerHTML = '';
+  members.forEach(m => {
+    const name = m.name || 'Без имени';
+    const rank = m.rank || 'Без звания';
+    const desc = m.description || 'нет описания';
+    const img = m.image || 'images/default.png';
+    const site = m.site ? `<a href="${m.site}" target="_blank">Перейти на сайт</a>` : '<p>ссылки нет</p>';
+
+    const card = document.createElement('div');
+    card.className = 'member';
+    card.innerHTML = `
+      <img src="${img}" alt="${name}">
+      <h2>${name}</h2>
+      <h3>${rank}</h3>
+      <p>${desc}</p>
+      ${site}
+    `;
+    container.appendChild(card);
+  });
+}
+
+// Показываем участников сразу
+showMembers(members);
+
+// Поддержка темы (если родитель — темная)
+if (window.parent && window.parent.document.body.classList.contains('dark')) {
+  document.body.classList.add('dark');
+}
+</script>
+</body>
+</html>
