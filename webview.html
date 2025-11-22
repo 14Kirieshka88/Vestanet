@@ -46,19 +46,15 @@
         const loadingMessage = document.getElementById('loadingMessage');
 
         /**
-         * ИСПРАВЛЕНО: Теперь извлекает адрес сайта из window.location.hash
-         * Ожидается формат: #site.vs/path
+         * Извлекает адрес сайта из window.location.hash
          */
         function extractSiteUrlFromHash() {
-            // window.location.hash возвращает строку, начинающуюся с #
             const hash = window.location.hash; 
             
             if (hash.length > 1) {
-                // Удаляем # и возвращаем оставшуюся часть (например, site.vs/path)
                 return hash.substring(1); 
             }
             
-            // Если хэш пустой, возвращаем стартовую страницу
             return 'welcome.vs';
         }
 
@@ -75,8 +71,9 @@
                 webviewFrame.srcdoc = content;
                 document.title = url + ' | VS Webview'; // Обновляем заголовок
                 
-                // Также обновляем хэш в URL, чтобы навигация работала
-                window.history.pushState(null, null, `#${url}`);
+                // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Обновляем хэш URL-адреса
+                // Это меняет видимый адрес в строке браузера
+                window.history.pushState(null, null, `#${url}`); 
 
             } catch (error) {
                 webviewFrame.srcdoc = `
@@ -100,7 +97,11 @@
             // Обработка перехода по кнопкам "назад/вперед" браузера
             window.onhashchange = function() {
                 const newUrl = extractSiteUrlFromHash();
-                navigateTo(newUrl);
+                // Используем navigateTo для загрузки нового сайта, но только если хэш изменился
+                // (чтобы избежать двойной загрузки при использовании pushState)
+                if (newUrl !== extractSiteUrlFromHash()) { 
+                    navigateTo(newUrl);
+                }
             };
         };
     </script>
