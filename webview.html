@@ -1,48 +1,105 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>VS Browser Minimal</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VS Webview</title>
     <style>
+        /* Удаляем все элементы UI, оставляем только сам веб-контент */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #e9eef2;
-            width: 100vw;
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #ffffff; 
+            overflow: hidden; 
             height: 100vh;
-            overflow: hidden;
+            width: 100vw;
         }
-        #view {
+        
+        .webview-frame {
             width: 100%;
-            height: 100%;
+            height: 100vh; /* Занимает всю высоту видимой области */
             border: none;
+            background: white;
+            display: block;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 16px;
+            color: #3498db;
         }
     </style>
 </head>
 <body>
-    <iframe id="view" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+    <iframe id="webviewFrame" class="webview-frame" 
+            sandbox="allow-scripts allow-forms allow-same-origin allow-popups">
+    </iframe>
 
-    <script src="api.js"></script>
+    <div id="loadingMessage" class="loading">Загрузка...</div>
+
+    <script src="api.js"></script> 
     <script>
-        const frame = document.getElementById("view");
+        const webviewFrame = document.getElementById('webviewFrame');
+        const loadingMessage = document.getElementById('loadingMessage');
 
-        async function loadVS(url) {
+        /**
+         * Функция для извлечения адреса сайта из URL-пути хоста.
+         * Ожидается формат: /.../webview.html/site.vs/path
+         */
+        function extractSiteUrlFromPath() {
+            const fullPath = window.location.pathname;
+            const parts = fullPath.split('/');
+            
+            // Ищем 'webview.html' в пути
+            const webviewIndex = parts.indexOf('webview.html');
+            
+            if (webviewIndex !== -1 && webviewIndex < parts.length - 1) {
+                // Все, что идет после 'webview.html/', это наш целевой URL (site.vs/path)
+                const siteUrl = parts.slice(webviewIndex + 1).join('/');
+                
+                // Убедимся, что URL не пустой, и вернем его
+                return siteUrl.trim() || 'welcome.vs';
+            }
+            
+            // Если формат не соответствует, возвращаем стартовую страницу
+            return 'welcome.vs';
+        }
+
+        /**
+         * Глобальная функция навигации, требуемая api.js
+         */
+        window.navigateTo = async function(url) {
+            loadingMessage.style.display = 'block';
+
             try {
+                // Используем функцию loadWebsite из api.js
                 const content = await loadWebsite(url);
-                frame.srcdoc = content;
-            } catch(err) {
-                frame.srcdoc = `<h2 style='padding:20px;color:red;'>Ошибка: ${err.message}</h2>`;
+                
+                webviewFrame.srcdoc = content;
+                document.title = url + ' | VS Webview'; // Обновляем заголовок
+                
+            } catch (error) {
+                webviewFrame.srcdoc = `
+                    <div style="padding: 50px; text-align: center; color: #e74c3c;">
+                        <h2>❌ Ошибка загрузки</h2>
+                        <p>Сайт: ${url}</p>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                loadingMessage.style.display = 'none';
             }
         }
 
-        // Парсим адрес из хеша, например browser.html#example.vs
-        function update() {
-            const url = location.hash.slice(1).trim();
-            if (url) loadVS(url);
-        }
-
-        window.addEventListener("hashchange", update);
-        update();
+        // Запуск: При загрузке страницы извлекаем URL и переходим
+        window.onload = function() {
+            const siteUrl = extractSiteUrlFromPath();
+            console.log('Detected site URL:', siteUrl);
+            navigateTo(siteUrl);
+        };
     </script>
 </body>
 </html>
