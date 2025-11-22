@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VS Browser Minimal</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #e9eef2;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #view {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <iframe id="view" sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+
+    <script src="api.js"></script>
+    <script>
+        const frame = document.getElementById("view");
+
+        async function loadVS(url) {
+            try {
+                const content = await loadWebsite(url);
+                frame.srcdoc = content;
+            } catch(err) {
+                frame.srcdoc = `<h2 style='padding:20px;color:red;'>Ошибка: ${err.message}</h2>`;
+            }
+        }
+
+        // Парсим адрес из хеша, например browser.html#example.vs
+        function update() {
+            const url = location.hash.slice(1).trim();
+            if (url) loadVS(url);
+        }
+
+        window.addEventListener("hashchange", update);
+        update();
+    </script>
+</body>
+</html>
