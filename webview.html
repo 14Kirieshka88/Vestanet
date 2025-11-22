@@ -46,25 +46,19 @@
         const loadingMessage = document.getElementById('loadingMessage');
 
         /**
-         * Функция для извлечения адреса сайта из URL-пути хоста.
-         * Ожидается формат: /.../webview.html/site.vs/path
+         * ИСПРАВЛЕНО: Теперь извлекает адрес сайта из window.location.hash
+         * Ожидается формат: #site.vs/path
          */
-        function extractSiteUrlFromPath() {
-            const fullPath = window.location.pathname;
-            const parts = fullPath.split('/');
+        function extractSiteUrlFromHash() {
+            // window.location.hash возвращает строку, начинающуюся с #
+            const hash = window.location.hash; 
             
-            // Ищем 'webview.html' в пути
-            const webviewIndex = parts.indexOf('webview.html');
-            
-            if (webviewIndex !== -1 && webviewIndex < parts.length - 1) {
-                // Все, что идет после 'webview.html/', это наш целевой URL (site.vs/path)
-                const siteUrl = parts.slice(webviewIndex + 1).join('/');
-                
-                // Убедимся, что URL не пустой, и вернем его
-                return siteUrl.trim() || 'welcome.vs';
+            if (hash.length > 1) {
+                // Удаляем # и возвращаем оставшуюся часть (например, site.vs/path)
+                return hash.substring(1); 
             }
             
-            // Если формат не соответствует, возвращаем стартовую страницу
+            // Если хэш пустой, возвращаем стартовую страницу
             return 'welcome.vs';
         }
 
@@ -81,6 +75,9 @@
                 webviewFrame.srcdoc = content;
                 document.title = url + ' | VS Webview'; // Обновляем заголовок
                 
+                // Также обновляем хэш в URL, чтобы навигация работала
+                window.history.pushState(null, null, `#${url}`);
+
             } catch (error) {
                 webviewFrame.srcdoc = `
                     <div style="padding: 50px; text-align: center; color: #e74c3c;">
@@ -94,11 +91,17 @@
             }
         }
 
-        // Запуск: При загрузке страницы извлекаем URL и переходим
+        // Запуск: При загрузке страницы извлекаем URL из хэша и переходим
         window.onload = function() {
-            const siteUrl = extractSiteUrlFromPath();
-            console.log('Detected site URL:', siteUrl);
+            const siteUrl = extractSiteUrlFromHash();
+            console.log('Detected site URL from hash:', siteUrl);
             navigateTo(siteUrl);
+            
+            // Обработка перехода по кнопкам "назад/вперед" браузера
+            window.onhashchange = function() {
+                const newUrl = extractSiteUrlFromHash();
+                navigateTo(newUrl);
+            };
         };
     </script>
 </body>
